@@ -9,3 +9,4 @@ requests==2.32.3
 psycopg2-binary==2.9.9
 mysqlclient==2.2.4
 python-json-logger==2.0.7
+hypothesis==6.112.1
