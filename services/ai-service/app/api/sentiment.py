@@ -13,6 +13,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from app.application.sentiment_service import get_sentiment_service
+from app.core.errors import ValidationError
 from app.core.responses import error_response, success_response
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,14 @@ async def analyze_sentiment(
 
     try:
         result = await service.analyze(body.text)
+    except ValidationError as exc:
+        body_content = error_response(
+            code=exc.error_code,
+            message=exc.message,
+            details=exc.details,
+            request=request,
+        )
+        return JSONResponse(status_code=exc.http_status, content=body_content)
     except asyncio.TimeoutError:
         body_content = error_response(
             code="SERVICE_UNAVAILABLE",

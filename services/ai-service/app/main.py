@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.chat import router as chat_router
 from app.api.health import router as health_router
+from app.api.segmentation import router as segmentation_router
 from app.api.sentiment import router as sentiment_router
 from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
@@ -166,6 +167,7 @@ def create_app() -> FastAPI:
     app.include_router(health_router)
     app.include_router(chat_router)
     app.include_router(sentiment_router)
+    app.include_router(segmentation_router)
 
     return app
 

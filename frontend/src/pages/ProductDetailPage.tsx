@@ -123,10 +123,10 @@ function StarRating({ rating, count }: { rating: number; count: number }) {
                     <Star
                         key={i}
                         className={`w-4 h-4 ${i < fullStars
-                                ? 'text-yellow-400 fill-yellow-400'
-                                : i === fullStars && hasHalf
-                                    ? 'text-yellow-400 fill-yellow-400/50'
-                                    : 'text-gray-300'
+                            ? 'text-yellow-400 fill-yellow-400'
+                            : i === fullStars && hasHalf
+                                ? 'text-yellow-400 fill-yellow-400/50'
+                                : 'text-gray-300'
                             }`}
                     />
                 ))}
@@ -237,7 +237,7 @@ export default function ProductDetailPage() {
     };
 
     const handleAskAI = () => {
-        navigate(`/?chat=true&product=${id}`);
+        navigate(`/chat?product=${id}`);
     };
 
     // Build sorted images list
@@ -322,8 +322,8 @@ export default function ProductDetailPage() {
                                         key={img.id}
                                         onClick={() => setSelectedImageIndex(idx)}
                                         className={`shrink-0 w-16 h-16 rounded-lg border-2 overflow-hidden transition-all ${idx === selectedImageIndex
-                                                ? 'border-blue-500 ring-2 ring-blue-200'
-                                                : 'border-gray-200 hover:border-gray-300'
+                                            ? 'border-blue-500 ring-2 ring-blue-200'
+                                            : 'border-gray-200 hover:border-gray-300'
                                             }`}
                                     >
                                         <ImageWithFallback
@@ -417,10 +417,10 @@ export default function ProductDetailPage() {
                                 onClick={handleAddToCart}
                                 disabled={product.stock === 0 || addingToCart}
                                 className={`w-full flex items-center justify-center gap-2 py-3 px-6 rounded-lg text-sm font-semibold transition-all ${cartSuccess
-                                        ? 'bg-green-600 text-white'
-                                        : product.stock === 0
-                                            ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
-                                            : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-md'
+                                    ? 'bg-green-600 text-white'
+                                    : product.stock === 0
+                                        ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+                                        : 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-md'
                                     }`}
                             >
                                 <ShoppingCart className="w-4 h-4" />

@@ -245,10 +245,10 @@ export default function AIChatBot({ products, selectedProductId }: AIChatBotProp
                 <div className="space-y-1.5">
                   <div
                     className={`px-3 py-2 rounded-2xl text-xs leading-relaxed ${msg.role === "user"
-                        ? "bg-blue-600 text-white rounded-tr-sm"
-                        : msg.isError
-                          ? "bg-red-50 border border-red-200 text-red-700 rounded-tl-sm"
-                          : "bg-white border border-gray-200 text-gray-800 rounded-tl-sm"
+                      ? "bg-blue-600 text-white rounded-tr-sm"
+                      : msg.isError
+                        ? "bg-red-50 border border-red-200 text-red-700 rounded-tl-sm"
+                        : "bg-white border border-gray-200 text-gray-800 rounded-tl-sm"
                       }`}
                   >
                     {msg.isError && (

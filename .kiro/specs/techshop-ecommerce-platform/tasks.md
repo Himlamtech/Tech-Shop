@@ -323,7 +323,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Display shipping details and tracking code
     - _Requirements: 22.7_
 
-- [ ] 12. Phase 3 — AI Service Setup and RAG Chatbot
+- [x] 12. Phase 3 — AI Service Setup and RAG Chatbot
   - [x] 12.1 Create AI Service scaffold (FastAPI)
     - Initialize FastAPI project structure: app/main.py, app/api/, app/core/, app/application/, app/infrastructure/, app/ml/
     - Implement core config, structured logging, error handling matching standard envelope format
@@ -341,7 +341,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Apply migrations with pgvector extension enabled
     - _Requirements: 12.6_
 
-  - [-] 12.3 Implement RAG ingestion pipeline
+  - [x] 12.3 Implement RAG ingestion pipeline
     - Create management command to export catalog products as embedding documents (title + description + brand + category + price + attributes)
     - Create management command to ingest TechShop FAQ/policy documents (warranty, shipping, return, payment policies)
     - Normalize text, chunk documents, generate embeddings (sentence-transformers or similar)
@@ -350,7 +350,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Handle idempotent re-ingestion (skip existing, update changed)
     - _Requirements: 12.6, 24.5, 24.7, 24.8_
 
-  - [-] 12.4 Implement RAG chat endpoint
+  - [x] 12.4 Implement RAG chat endpoint
     - POST /api/v1/chat — accept message (1-1000 chars), user_id (optional), context (current_product_id, cart_product_ids)
     - Retrieve top-5 relevant documents by cosine similarity from pgvector
     - If no document exceeds 0.5 similarity score, return AI_NO_CONTEXT_FOUND error
@@ -370,7 +370,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Test guest rate limiting (10 queries per session)
     - _Requirements: 12.1, 12.3, 12.7, 12.8_
 
-  - [-] 12.6 Implement Frontend AI chatbot interface
+  - [x] 12.6 Implement Frontend AI chatbot interface
     - Create AI chatbot drawer/full-page component
     - Display 3-5 suggested prompts for new conversations
     - Render chat bubbles distinguishing user messages from AI responses
@@ -386,7 +386,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 14. Phase 4 — AI Sentiment Analysis Model
-  - [-] 14.1 Implement sentiment analysis model and endpoint
+  - [x] 14.1 Implement sentiment analysis model and endpoint
     - Create sentiment model module (BERT/PhoBERT/mBERT) in app/ml/sentiment/
     - Implement model loading, tokenization, and inference pipeline
     - POST /api/v1/sentiment — accept review text, return label (positive/neutral/negative), confidence score (0.0-1.0), model_version
@@ -409,7 +409,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - _Requirements: 14.1, 14.3, 14.4_
 
 - [ ] 15. Phase 4 — AI Customer Segmentation Model
-  - [~] 15.1 Implement customer segmentation model and endpoint
+  - [-] 15.1 Implement customer segmentation model and endpoint
     - Create KMeans segmentation module in app/ml/segmentation/
     - Implement RFM feature computation (Recency days, Frequency orders, Monetary total spend)
     - Implement KMeans clustering with silhouette score optimization (3-8 clusters)
@@ -436,7 +436,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - _Requirements: 15.1, 15.4, 15.5_
 
 - [ ] 16. Phase 4 — AI Product Classification Model
-  - [~] 16.1 Implement product classification model and endpoint
+  - [-] 16.1 Implement product classification model and endpoint
     - Create XGBoost/LightGBM classification module in app/ml/product_classifier/
     - Implement feature extraction from product title, description, brand, attributes
     - POST /api/v1/classification — accept product data, return predicted category_label, category_id, confidence_score (0.0-1.0)
@@ -452,7 +452,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - _Requirements: 16.1, 16.3, 16.4, 16.5_
 
 - [ ] 17. Phase 4 — AI Sequence Recommendation Model
-  - [~] 17.1 Implement sequence recommendation model and endpoint
+  - [-] 17.1 Implement sequence recommendation model and endpoint
     - Create LSTM/GRU sequence model module in app/ml/sequence_model/
     - Implement model that predicts next products from interaction sequence
     - Integrate into GET /api/v1/recommendations endpoint as sequence_score component (weight 0.30)
@@ -478,7 +478,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - _Requirements: 17.1, 17.3, 17.4, 17.5_
 
 - [ ] 18. Phase 4 — Hybrid Recommendation Endpoint
-  - [~] 18.1 Implement hybrid recommendation scoring pipeline
+  - [-] 18.1 Implement hybrid recommendation scoring pipeline
     - GET /api/v1/recommendations — accept user_id, optional context_product_id, optional budget (min/max price)
     - Compute hybrid score: 0.30 sequence + 0.25 content similarity + 0.20 collaborative + 0.15 popularity + 0.10 business rules
     - Cold start fallback: if user has <3 interactions, use popularity + business rules only
@@ -512,13 +512,13 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 20. Phase 5 — Review Service
-  - [~] 20.1 Implement Review Service models and migrations
+  - [-] 20.1 Implement Review Service models and migrations
     - Create Review model with UUID PK, user_id, product_id, rating (1-5), comment (1-2000 chars), sentiment_label (nullable), sentiment_score (nullable), sentiment_status (completed/pending), created_at
     - Add unique constraint on (user_id, product_id)
     - Generate and apply migrations
     - _Requirements: 11.1, 11.3_
 
-  - [~] 20.2 Implement Review Service endpoints
+  - [x] 20.2 Implement Review Service endpoints
     - POST /api/v1/reviews — create review; verify purchase via Order Service (completed order containing product); call AI sentiment endpoint; store sentiment or mark pending if AI unavailable
     - GET /api/v1/reviews/product/{product_id} — paginated list sorted by newest, default page_size 10, max 50; include rating, comment, sentiment_label, timestamp
     - Calculate and expose average rating (1 decimal) and total review count per product
