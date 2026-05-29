@@ -19,6 +19,8 @@ PyJWT[crypto]==2.10.1
 
 # ML / Embeddings
 sentence-transformers==3.3.1
+scikit-learn==1.6.0
+numpy==1.26.4
 
 # Utilities
 python-multipart==0.0.20

@@ -18,7 +18,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.chat import router as chat_router
+from app.api.classification import router as classification_router
 from app.api.health import router as health_router
+from app.api.recommendations import router as recommendations_router
 from app.api.segmentation import router as segmentation_router
 from app.api.sentiment import router as sentiment_router
 from app.core.config import get_settings
@@ -168,6 +170,8 @@ def create_app() -> FastAPI:
     app.include_router(chat_router)
     app.include_router(sentiment_router)
     app.include_router(segmentation_router)
+    app.include_router(classification_router)
+    app.include_router(recommendations_router)
 
     return app
 
