@@ -15,6 +15,8 @@ import ProtectedRoute from "./components/auth/ProtectedRoute";
 import HomePage from "@frontend/src/pages/HomePage";
 import ProductListingPage from "@frontend/src/pages/ProductListingPage";
 import ProductDetailPage from "@frontend/src/pages/ProductDetailPage";
+import CheckoutPage from "@frontend/src/pages/CheckoutPage";
+import CartPage from "@frontend/src/pages/CartPage";
 import { Search, Sparkles, Scale, ShoppingBag, ShieldCheck, RefreshCw, AlertCircle, HelpCircle } from "lucide-react";
 
 export default function App() {
@@ -232,6 +234,11 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/checkout" element={
+        <ProtectedRoute>
+          <CheckoutPage />
+        </ProtectedRoute>
+      } />
       <Route path="/" element={
         <div className="min-h-screen bg-gray-50 text-gray-900 relative pb-16">
           <Navbar
@@ -265,6 +272,11 @@ export default function App() {
         </div>
       } />
       <Route path="/products/:id" element={<ProductDetailPage />} />
+      <Route path="/cart" element={
+        <ProtectedRoute>
+          <CartPage />
+        </ProtectedRoute>
+      } />
       <Route path="/products" element={
         <div className="min-h-screen bg-gray-50 text-gray-900 relative pb-16">
           <Navbar
