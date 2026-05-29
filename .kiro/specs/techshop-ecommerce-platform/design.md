@@ -538,144 +538,411 @@ class RecommendationLog:
     created_at: datetime
 ```
 
-
 ## Correctness Properties
 
-### Property 1: Price Snapshot Immutability
+*A property is a characteristic or behavior that should hold true across all valid executions of a system — essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.*
 
-Once an OrderItem is created, its `unit_price`, `product_name`, `product_sku`, and `product_image_url` fields SHALL never be modified, regardless of subsequent changes to the source product in Catalog_Service.
+### Property 1: Registration Input Validation
 
-**Validates: Requirements 8.2**
+*For any* string that does not conform to valid email format (max 254 chars) or any password outside the 8–128 character range, the Identity_Service registration endpoint SHALL reject the request with a VALIDATION_ERROR and not create a user account.
 
-### Property 2: Order Status Transition Validity
+**Validates: Requirements 1.4, 1.5**
 
-An Order's status SHALL only transition through the allowed paths defined in the state machine. Any attempt to perform an invalid transition SHALL be rejected atomically using optimistic locking (WHERE clause on current status).
+### Property 2: Password Hashing Integrity
+
+*For any* valid password submitted during registration, the stored password_hash SHALL NOT equal the plaintext password, and Django's `check_password(plaintext, hash)` SHALL return True.
+
+**Validates: Requirements 1.3**
+
+### Property 3: JWT Token Expiration Correctness
+
+*For any* successful login, the issued access token SHALL contain an `exp` claim exactly 15 minutes from issuance, and the refresh token SHALL have an expiration of 7 days from issuance.
+
+**Validates: Requirements 2.1**
+
+### Property 4: Refresh Token Rotation
+
+*For any* valid refresh token, calling the refresh endpoint SHALL return a new access token and a new refresh token, and the previously used refresh token SHALL become invalid (subsequent use returns UNAUTHORIZED).
+
+**Validates: Requirements 2.3**
+
+### Property 5: Authentication and Authorization Enforcement
+
+*For any* request to a protected endpoint: (a) if the token is missing, expired, malformed, or has an invalid signature, the response SHALL be 401 UNAUTHORIZED; (b) if the token is valid but the role is insufficient for the endpoint, the response SHALL be 403 FORBIDDEN.
+
+**Validates: Requirements 3.2, 3.4**
+
+### Property 6: Product Validation Correctness
+
+*For any* product creation request, if all fields are within valid ranges (name 1–255 chars, description 1–5000 chars, price 0.01–999,999,999.99, stock 0–999,999, brand 1–100 chars, at least one image URL), the product SHALL be created successfully; if any field is outside its valid range or missing, the request SHALL be rejected with VALIDATION_ERROR indicating which fields failed.
+
+**Validates: Requirements 4.1, 4.2**
+
+### Property 7: Product Import Idempotency
+
+*For any* product with a given SKU, importing it when that SKU already exists in the database SHALL update the existing product's fields rather than creating a duplicate entry, and the total product count for that SKU SHALL remain exactly 1.
+
+**Validates: Requirements 4.8**
+
+### Property 8: Category Slug Generation
+
+*For any* valid category name (1–100 characters), the generated slug SHALL contain only lowercase letters, digits, and hyphens, and SHALL be deterministically derived from the name.
+
+**Validates: Requirements 6.2**
+
+### Property 9: Category Depth Constraint
+
+*For any* category creation with a parent reference, the resulting category depth SHALL not exceed 3 levels. Attempts to create a category at level 4 or deeper SHALL be rejected with VALIDATION_ERROR.
+
+**Validates: Requirements 6.1**
+
+### Property 10: Cart Stock Validation
+
+*For any* product with available stock S and a cart add/update request with quantity Q: the operation SHALL succeed if and only if the product is active AND 1 ≤ Q ≤ 99 AND Q ≤ S. Otherwise, the cart SHALL remain unmodified and an appropriate error (PRODUCT_OUT_OF_STOCK or VALIDATION_ERROR) SHALL be returned.
+
+**Validates: Requirements 7.1, 7.4, 7.5**
+
+### Property 11: Cart Arithmetic Invariant
+
+*For any* cart containing items, each item's `line_total` SHALL equal `unit_price × quantity`, and the cart `subtotal` SHALL equal the sum of all `line_total` values.
+
+**Validates: Requirements 7.7**
+
+### Property 12: Order Total Calculation
+
+*For any* order, `total_amount` SHALL equal `subtotal + shipping_fee - discount_amount`, where subtotal equals the sum of all order item `line_total` values (each being `unit_price × quantity`), and all values SHALL be stored as decimals with exactly two decimal places.
+
+**Validates: Requirements 8.6**
+
+### Property 13: Order Status Transition Correctness
+
+*For any* order in status S and any attempted transition to status T: the transition SHALL succeed if and only if (S, T) is in the allowed transitions map {created→{payment_pending, cancelled}, payment_pending→{paid, payment_failed, cancelled}, paid→{shipping, cancelled}, shipping→{completed}, payment_failed→{payment_pending, cancelled}}. Invalid transitions SHALL return VALIDATION_ERROR without modifying the order.
 
 **Validates: Requirements 23.2, 23.4**
 
-### Property 3: Cart-Product Consistency
+### Property 14: Payment Idempotency
 
-A CartItem SHALL only reference a product_id that is active and in-stock at the time of addition. Stock validation occurs via Catalog_Service API call before any cart modification.
-
-**Validates: Requirements 7.1, 7.2**
-
-### Property 4: One Cart Per Customer
-
-The Cart_Service SHALL maintain exactly one active cart per user_id. The unique constraint on `Cart.user_id` enforces this at the database level.
-
-**Validates: Requirements 7.8**
-
-### Property 5: One Review Per Customer Per Product
-
-The unique constraint on `Review(user_id, product_id)` ensures no duplicate reviews exist. Attempting a second review returns a CONFLICT error.
-
-**Validates: Requirements 11.3**
-
-### Property 6: Payment Idempotency
-
-The unique constraint on `PaymentTransaction.idempotency_key` ensures that duplicate payment requests for the same order produce the same result without creating additional transactions.
+*For any* payment request with a given idempotency_key and order_id, submitting the request multiple times SHALL always return the same transaction result and SHALL never create more than one PaymentTransaction record for that idempotency_key.
 
 **Validates: Requirements 9.6**
 
-### Property 7: Shipment Status Forward-Only
+### Property 15: Shipment Status Transition Correctness
 
-Shipment status transitions are strictly forward: processing → shipping → delivered. No backward transitions are permitted. Invalid transitions are rejected with VALIDATION_ERROR.
+*For any* shipment in status S and any attempted transition to status T: the transition SHALL succeed if and only if (S, T) is in {(processing, shipping), (shipping, delivered)}. All other transitions SHALL be rejected with VALIDATION_ERROR.
 
 **Validates: Requirements 10.3, 10.5**
 
-### Property 8: Database Isolation
+### Property 16: Shipment Tracking Code Format
 
-No service SHALL directly access another service's database. All cross-service data access occurs through REST API calls via ServiceClient. This is enforced by Docker network configuration (services cannot reach other databases).
+*For any* newly created shipment, the generated tracking_code SHALL be between 8 and 20 characters in length and SHALL contain only alphanumeric characters (matching pattern `^[A-Za-z0-9]{8,20}$`).
 
-**Validates: Requirements 18.4**
+**Validates: Requirements 10.2**
+
+### Property 17: Review Uniqueness Constraint
+
+*For any* customer and product combination where a review already exists, attempting to submit a second review SHALL return a CONFLICT error response and SHALL NOT create a duplicate review record.
+
+**Validates: Requirements 11.3**
+
+### Property 18: RAG Cosine Similarity Threshold
+
+*For any* chat query where all retrieved documents have cosine similarity scores below 0.5, the AI_Service SHALL return an AI_NO_CONTEXT_FOUND error response rather than generating an ungrounded answer.
+
+**Validates: Requirements 12.3**
+
+### Property 19: Hybrid Recommendation Score Formula
+
+*For any* set of component scores (sequence, content, collaborative, popularity, business), the final recommendation score SHALL equal `0.30 × sequence + 0.25 × content + 0.20 × collaborative + 0.15 × popularity + 0.10 × business`, and the result SHALL be between 0.0 and 1.0.
+
+**Validates: Requirements 13.2**
+
+### Property 20: Cold Start Recommendation Fallback
+
+*For any* user with fewer than 3 recorded product interactions, the recommendation response SHALL use only popularity_rating_score and business_rule_score components (effective weights: popularity and business only), excluding sequence_model and collaborative_behavior scoring.
+
+**Validates: Requirements 13.6**
+
+### Property 21: Sentiment Output Validity
+
+*For any* non-empty review text of 1–5000 characters, the sentiment analysis response SHALL contain a label that is exactly one of {positive, neutral, negative} and a confidence score that is a decimal value in the range [0.0, 1.0].
+
+**Validates: Requirements 14.1**
+
+### Property 22: ServiceClient Error Classification
+
+*For any* downstream HTTP response: (a) if status code is 5xx, timeout, or connection refused, the ServiceClient SHALL raise a SERVICE_UNAVAILABLE error; (b) if status code is 4xx, the ServiceClient SHALL propagate the downstream error code and message without converting it to SERVICE_UNAVAILABLE.
+
+**Validates: Requirements 18.3, 18.6**
+
+### Property 23: ServiceClient Header Propagation
+
+*For any* inter-service call made through the ServiceClient, the outgoing HTTP request SHALL contain the `Authorization` header and `X-Request-ID` header from the original incoming request context.
+
+**Validates: Requirements 18.2**
+
+### Property 24: API Response Format Correctness
+
+*For any* API response from the platform: (a) successful responses SHALL have `success: true`, a `data` field, and `meta.request_id`; (b) error responses SHALL have `success: false`, `error.code`, `error.message`, and `meta.request_id`; (c) the HTTP status code SHALL match the error code mapping (UNAUTHORIZED→401, FORBIDDEN→403, NOT_FOUND→404, VALIDATION_ERROR→422, PRODUCT_OUT_OF_STOCK→422, PAYMENT_FAILED→502, SERVICE_UNAVAILABLE→503).
+
+**Validates: Requirements 19.1, 19.2, 19.7**
+
+### Property 25: Pagination Metadata Correctness
+
+*For any* paginated list endpoint with N total items and requested page_size P (default 20, max 100), the response SHALL contain `total = N`, `total_pages = ceil(N / P)`, `page_size = P`, and the `data` array length SHALL be `min(P, N - (page - 1) * P)` for valid pages.
+
+**Validates: Requirements 19.3**
+
+### Property 26: Request ID Generation and Propagation
+
+*For any* incoming request, the platform SHALL include a `request_id` matching the pattern `^req_.+$` in the response `meta` field, and all inter-service calls triggered by that request SHALL carry the same value in the `X-Request-ID` header.
+
+**Validates: Requirements 20.4**
+
+### Property 27: Structured Log Entry Format
+
+*For any* HTTP request processed by any service, the emitted log entry SHALL be a valid single-line JSON object containing all required fields: timestamp (ISO 8601), level (DEBUG|INFO|WARNING|ERROR), service, request_id, user_id (or null), method, path, status_code, and duration_ms.
+
+**Validates: Requirements 20.3**
+
+### Property 28: Owner Verification
+
+*For any* cart, order, or review resource owned by user A, a request from user B (where B ≠ A and B does not have admin/staff role) SHALL return a 403 FORBIDDEN response without disclosing the existence of the resource.
+
+**Validates: Requirements 25.4**
+
+### Property 29: Seeding Command Idempotency
+
+*For any* data seeding command, executing it twice with the same source data SHALL result in the same total record count (no duplicates created), and the command SHALL report the number of records created and skipped.
+
+**Validates: Requirements 24.7**
 
 ## Error Handling
 
-### Error Response Envelope
+### Error Classification Strategy
 
-All errors follow the standard envelope format:
+The platform uses a layered error handling approach where errors are classified, wrapped in the standard envelope, and propagated consistently across all services.
 
-```json
-{
-  "success": false,
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Human-readable description",
-    "details": []
-  },
-  "meta": {
-    "request_id": "req_..."
-  }
-}
-```
-
-### Error Code to HTTP Status Mapping
+### Error Code Registry
 
 | Error Code | HTTP Status | When Used |
 |-----------|-------------|-----------|
-| UNAUTHORIZED | 401 | Missing/invalid/expired JWT token |
-| FORBIDDEN | 403 | Valid token but insufficient role or not resource owner |
-| NOT_FOUND | 404 | Resource does not exist |
-| VALIDATION_ERROR | 422 | Invalid input data, field constraints violated |
-| PRODUCT_OUT_OF_STOCK | 422 | Product unavailable for cart/order operations |
-| CONFLICT | 409 | Duplicate review, concurrent status transition |
-| PAYMENT_FAILED | 502 | Payment processing failure |
-| SERVICE_UNAVAILABLE | 503 | Downstream service timeout/unreachable |
-| AI_NO_CONTEXT_FOUND | 503 | RAG retrieval insufficient for grounded answer |
+| `UNAUTHORIZED` | 401 | Missing/invalid/expired JWT token |
+| `FORBIDDEN` | 403 | Valid token but insufficient role or not resource owner |
+| `NOT_FOUND` | 404 | Resource does not exist or is inactive |
+| `VALIDATION_ERROR` | 422 | Invalid input data, constraint violations, invalid state transitions |
+| `CONFLICT` | 409 | Duplicate resource (e.g., second review for same product) |
+| `PRODUCT_OUT_OF_STOCK` | 422 | Product inactive or insufficient stock for requested quantity |
+| `PAYMENT_FAILED` | 502 | Payment simulation returned failure |
+| `SERVICE_UNAVAILABLE` | 503 | Downstream service timeout, 5xx, or connection refused |
+| `AI_NO_CONTEXT_FOUND` | 503 | RAG retrieval below similarity threshold |
+| `ACCOUNT_LOCKED` | 423 | Too many failed login attempts |
+
+### Error Handling Per Layer
+
+```
+┌─────────────────────────────────────────────────────┐
+│ View Layer (views.py)                                │
+│ - Catches all exceptions via DRF exception handler  │
+│ - Maps to standard error envelope                   │
+│ - Logs error with request_id                        │
+├─────────────────────────────────────────────────────┤
+│ Service Layer (services.py)                          │
+│ - Raises domain-specific exceptions                 │
+│ - ProductOutOfStockError, InvalidTransitionError    │
+│ - ServiceUnavailableError (from ServiceClient)      │
+├─────────────────────────────────────────────────────┤
+│ ServiceClient (http_client.py)                       │
+│ - Timeout → ServiceUnavailableError                 │
+│ - Connection refused → ServiceUnavailableError      │
+│ - 5xx response → ServiceUnavailableError            │
+│ - 4xx response → propagate downstream error         │
+├─────────────────────────────────────────────────────┤
+│ Serializer Layer (serializers.py)                    │
+│ - Raises ValidationError with field-level details   │
+│ - Automatically mapped to VALIDATION_ERROR          │
+└─────────────────────────────────────────────────────┘
+```
+
+### Custom Exception Hierarchy
+
+```python
+class TechShopException(Exception):
+    """Base exception for all TechShop services."""
+    error_code: str
+    http_status: int
+    message: str
+
+class ValidationError(TechShopException):
+    error_code = "VALIDATION_ERROR"
+    http_status = 422
+    details: list[dict]  # [{field, reason}]
+
+class NotFoundError(TechShopException):
+    error_code = "NOT_FOUND"
+    http_status = 404
+
+class ForbiddenError(TechShopException):
+    error_code = "FORBIDDEN"
+    http_status = 403
+
+class UnauthorizedError(TechShopException):
+    error_code = "UNAUTHORIZED"
+    http_status = 401
+
+class ProductOutOfStockError(TechShopException):
+    error_code = "PRODUCT_OUT_OF_STOCK"
+    http_status = 422
+
+class ServiceUnavailableError(TechShopException):
+    error_code = "SERVICE_UNAVAILABLE"
+    http_status = 503
+
+class InvalidTransitionError(ValidationError):
+    """Raised when an invalid state transition is attempted."""
+
+class PaymentFailedError(TechShopException):
+    error_code = "PAYMENT_FAILED"
+    http_status = 502
+
+class ConflictError(TechShopException):
+    error_code = "CONFLICT"
+    http_status = 409
+```
 
 ### Inter-Service Error Propagation
 
-1. **4xx from downstream**: ServiceClient propagates the error code and message directly to the caller without transformation.
-2. **5xx / timeout / connection refused from downstream**: ServiceClient raises `ServiceUnavailableError`, which the calling service maps to a 503 SERVICE_UNAVAILABLE response.
-3. **No automatic retries in ServiceClient**: Each service implements its own retry logic where appropriate (e.g., Order_Service retries shipment creation 3 times).
+```mermaid
+flowchart TD
+    REQ[Incoming Request] --> SVC[Service Logic]
+    SVC --> SC[ServiceClient Call]
+    SC --> DS[Downstream Service]
+    
+    DS -->|2xx| SUCCESS[Return data]
+    DS -->|4xx| PROP[Propagate error code + message]
+    DS -->|5xx| UNAVAIL[Raise ServiceUnavailableError]
+    DS -->|Timeout| UNAVAIL
+    DS -->|Connection Refused| UNAVAIL
+    
+    SUCCESS --> WRAP[Wrap in success envelope]
+    PROP --> WRAP_ERR[Wrap in error envelope]
+    UNAVAIL --> WRAP_ERR
+```
 
-### Graceful Degradation
+### Retry Strategy
 
-- **AI_Service unavailable during review submission**: Review_Service stores the review without sentiment data, marks `sentiment_status = 'pending'`, and processes sentiment asynchronously later.
-- **Shipping_Service unavailable after payment**: Order_Service retains order in "paid" status and retries shipment creation up to 3 times with 2-second intervals.
-- **Catalog_Service unavailable during cart add**: Cart_Service returns SERVICE_UNAVAILABLE immediately without modifying the cart.
+| Scenario | Retry Policy | Rationale |
+|----------|-------------|-----------|
+| Shipment creation after payment | 3 retries, 2s interval | Requirement 10.6 — order stays "paid" until shipment succeeds |
+| All other ServiceClient calls | No automatic retry | Requirement 18.7 — calling service decides retry policy |
+| DummyJSON product import | No retry (abort on failure) | Requirement 4.7 — import is admin-triggered, can be re-run |
+
+### Gateway Error Handling
+
+- Request body > 20MB → 413 Payload Too Large (Requirement 25.6)
+- No matching route → 404
+- Backend timeout → 504 Gateway Timeout
+- Backend connection refused → 502 Bad Gateway
 
 ## Testing Strategy
 
-### Unit Tests (per service)
+### Dual Testing Approach
 
-Each service SHALL have unit tests covering:
+The platform uses both unit/integration tests and property-based tests for comprehensive coverage:
 
-- **Models**: Field validation, constraints, default values
-- **Serializers**: Input validation, output format, edge cases
-- **Services/Selectors**: Business logic, state transitions, calculations
-- **Permissions**: Role-based access control enforcement
+| Test Type | Purpose | Tools |
+|-----------|---------|-------|
+| Property-based tests | Verify universal properties across generated inputs | `hypothesis` (Python) |
+| Unit tests | Verify specific examples, edge cases, error paths | `pytest` + Django test client |
+| Integration tests | Verify inter-service workflows end-to-end | `pytest` + Docker Compose |
+| API contract tests | Verify response envelope and pagination format | `pytest` + schema validation |
 
-### API Integration Tests (per service)
+### Property-Based Testing Configuration
 
-Each service SHALL have API tests covering:
+- **Library**: [Hypothesis](https://hypothesis.readthedocs.io/) for Python
+- **Minimum iterations**: 100 per property test
+- **Tag format**: `# Feature: techshop-ecommerce-platform, Property {N}: {title}`
 
-- Happy path for all endpoints
-- Authentication/authorization failures
-- Validation error responses
-- Edge cases (empty cart checkout, duplicate review, invalid status transition)
+### Property Test Mapping
 
-### Inter-Service Integration Tests
+| Property | Service Under Test | Key Generators |
+|----------|-------------------|----------------|
+| P1: Registration Input Validation | identity-service | Random strings (emails, passwords at boundary lengths) |
+| P2: Password Hashing Integrity | identity-service | Random valid passwords (8-128 chars) |
+| P3: JWT Token Expiration | identity-service | Random registered users |
+| P4: Refresh Token Rotation | identity-service | Random valid refresh tokens |
+| P5: Auth Enforcement | All services | Random tokens (valid/invalid/expired/malformed) × endpoints |
+| P6: Product Validation | catalog-service | Random product data (valid/invalid field combinations) |
+| P7: Product Import Idempotency | catalog-service | Random products with fixed SKUs |
+| P8: Category Slug Generation | catalog-service | Random category names (unicode, special chars) |
+| P9: Category Depth Constraint | catalog-service | Random category trees of varying depth |
+| P10: Cart Stock Validation | cart-service | Random (product_stock, requested_quantity) pairs |
+| P11: Cart Arithmetic | cart-service | Random cart items with prices and quantities |
+| P12: Order Total Calculation | order-service | Random (subtotal, shipping_fee, discount) tuples |
+| P13: Order Status Transitions | order-service | Random (current_status, target_status) pairs |
+| P14: Payment Idempotency | payment-service | Random payment requests with repeated idempotency keys |
+| P15: Shipment Status Transitions | shipping-service | Random (current_status, target_status) pairs |
+| P16: Tracking Code Format | shipping-service | Random shipment creation requests |
+| P17: Review Uniqueness | review-service | Random (user_id, product_id) pairs with existing reviews |
+| P18: RAG Similarity Threshold | ai-service | Random queries with controlled similarity scores |
+| P19: Hybrid Score Formula | ai-service | Random component score tuples |
+| P20: Cold Start Fallback | ai-service | Random users with 0-2 interactions |
+| P21: Sentiment Output Validity | ai-service | Random review texts (1-5000 chars) |
+| P22: ServiceClient Error Classification | core/http_client | Random HTTP responses (status codes, timeouts) |
+| P23: ServiceClient Header Propagation | core/http_client | Random request contexts with headers |
+| P24: API Response Format | All services | Random API calls across all endpoints |
+| P25: Pagination Metadata | All services | Random (total_items, page, page_size) combinations |
+| P26: Request ID Propagation | All services | Random requests through gateway |
+| P27: Structured Log Format | All services | Random requests, parse emitted logs |
+| P28: Owner Verification | cart/order/review | Random (owner_user, requester_user) pairs |
+| P29: Seeding Idempotency | catalog/ai | Random seed data, run command twice |
 
-Key cross-service workflows to test:
+### Unit Test Coverage Requirements
 
-1. **Checkout flow**: Cart → Order → Payment → Shipping (mock downstream services)
-2. **Review with sentiment**: Review → AI sentiment endpoint
-3. **Cart stock validation**: Cart → Catalog product validation
+Each service must include tests for:
+
+| Category | Examples |
+|----------|----------|
+| Happy path | Successful registration, login, product creation, checkout |
+| Auth failures | Missing token, expired token, wrong role |
+| Validation failures | Empty fields, out-of-range values, invalid formats |
+| State machine | Valid and invalid transitions for orders and shipments |
+| Inter-service failures | Downstream timeout, 5xx, connection refused |
+| Edge cases | Empty cart checkout, duplicate review, locked account |
+
+### Integration Test Scenarios
+
+| Scenario | Services Involved | Validates |
+|----------|-------------------|-----------|
+| Full checkout flow | Cart → Catalog → Order → Payment → Shipping | Requirements 7, 8, 9, 10 |
+| Review with sentiment | Review → AI (sentiment) | Requirements 11, 14 |
+| AI chat grounded response | AI → Catalog (validation) | Requirements 12 |
+| Cart stock validation | Cart → Catalog | Requirements 7.1, 7.2, 7.3 |
+| Payment retry on failure | Order → Payment (retry) | Requirements 9.5 |
+| Shipment creation retry | Order → Shipping (3x retry) | Requirements 10.6 |
 
 ### Test Infrastructure
 
-- **Django services**: `pytest` + `pytest-django` + `factory_boy` for fixtures
-- **FastAPI AI service**: `pytest` + `httpx` AsyncClient
-- **Database**: Each test uses a fresh test database (Django's `TestCase` with transaction rollback)
-- **Inter-service mocking**: `responses` library or `unittest.mock.patch` on ServiceClient methods
+```
+services/{service}/tests/
+├── conftest.py              → Fixtures, test DB setup
+├── test_models.py           → Model constraints, validations
+├── test_serializers.py      → Input/output serialization
+├── test_api.py              → API endpoint integration
+├── test_services.py         → Business logic unit tests
+├── test_properties.py       → Property-based tests (hypothesis)
+└── test_permissions.py      → RBAC enforcement tests
+```
 
-### Minimum Test Coverage Targets
+### CI Pipeline Test Execution
 
-| Layer | Coverage Target |
-|-------|----------------|
-| Models | All constraints and custom methods |
-| Serializers | Valid/invalid input for each field |
-| API endpoints | All status codes documented in error handling |
-| Services | All business rules and state transitions |
-| Permissions | Each role × each endpoint combination |
+```bash
+# Per-service test execution
+pytest services/{service}/tests/ --tb=short -q
+
+# Property tests with explicit settings
+pytest services/{service}/tests/test_properties.py \
+  --hypothesis-settings=max_examples=100
+
+# Full integration (requires Docker Compose)
+pytest tests/integration/ --docker-compose
+```

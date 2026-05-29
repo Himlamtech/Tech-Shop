@@ -1,0 +1,6 @@
+{
+  "name": "AI Tech Shop",
+  "description": "An immersive, high-end AI-powered tech e-commerce experience with interactive shopping, a real-time Gemini Product Expert, smart comparison engine, and detailed AI analysis of premium products.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
