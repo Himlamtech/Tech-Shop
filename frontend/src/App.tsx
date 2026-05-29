@@ -17,6 +17,8 @@ import ProductListingPage from "@frontend/src/pages/ProductListingPage";
 import ProductDetailPage from "@frontend/src/pages/ProductDetailPage";
 import CheckoutPage from "@frontend/src/pages/CheckoutPage";
 import CartPage from "@frontend/src/pages/CartPage";
+import OrderTrackingPage from "@frontend/src/pages/OrderTrackingPage";
+import ChatPage from "@frontend/src/pages/ChatPage";
 import { Search, Sparkles, Scale, ShoppingBag, ShieldCheck, RefreshCw, AlertCircle, HelpCircle } from "lucide-react";
 
 export default function App() {
@@ -239,6 +241,12 @@ export default function App() {
           <CheckoutPage />
         </ProtectedRoute>
       } />
+      <Route path="/orders/:id" element={
+        <ProtectedRoute>
+          <OrderTrackingPage />
+        </ProtectedRoute>
+      } />
+      <Route path="/chat" element={<ChatPage />} />
       <Route path="/" element={
         <div className="min-h-screen bg-gray-50 text-gray-900 relative pb-16">
           <Navbar

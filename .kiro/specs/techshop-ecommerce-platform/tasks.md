@@ -164,7 +164,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Protect cart/checkout/order routes for authenticated users
     - _Requirements: 22.5, 22.6_
 
-- [ ] 6. Phase 2 — Cart Service
+- [x] 6. Phase 2 — Cart Service
   - [x] 6.1 Implement Cart Service models and migrations
     - Create Cart model with UUID PK, user_id (unique — one cart per customer), timestamps
     - Create CartItem model with UUID PK, cart FK, product_id, quantity (1-99), timestamps; unique constraint on (cart_id, product_id)
@@ -199,14 +199,14 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Verify unique constraint on Cart.user_id prevents multiple carts per customer
     - **Validates: Requirements 7.8**
 
-  - [-] 6.6 Implement Frontend cart page
+  - [x] 6.6 Implement Frontend cart page
     - Create cart page with item list, quantity controls (+/-), remove button
     - Display order summary (subtotal, item count)
     - Add proceed-to-checkout button (disabled if cart empty)
     - Implement add-to-cart from product detail page
     - _Requirements: 22.5_
 
-- [ ] 7. Phase 2 — Order Service
+- [x] 7. Phase 2 — Order Service
   - [x] 7.1 Implement Order Service models and migrations
     - Create Order model with UUID PK, user_id, status (enum: created/payment_pending/paid/payment_failed/shipping/completed/cancelled), subtotal, shipping_fee, discount_amount, total_amount (all Decimal 2dp), shipping_address, timestamps
     - Create OrderItem model with UUID PK, order FK, product_id, product_name, product_sku, product_image_url, unit_price, quantity, line_total (price snapshot fields)
@@ -215,7 +215,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Generate and apply migrations
     - _Requirements: 8.2, 8.5, 8.6, 23.1, 23.2, 23.3_
 
-  - [-] 7.2 Implement Order Service checkout workflow
+  - [x] 7.2 Implement Order Service checkout workflow
     - POST /api/v1/orders/checkout — orchestrate: get cart (5s timeout) → validate items via Catalog (5s timeout) → create order + items with price snapshot → create payment via Payment Service → handle payment result → create shipment on success
     - Implement status transition logic with optimistic locking (WHERE current_status = expected)
     - Reject empty cart checkout with VALIDATION_ERROR
@@ -224,7 +224,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Return VALIDATION_ERROR listing failed items if any product validation fails
     - _Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.7, 8.8, 23.4, 23.5_
 
-  - [-] 7.3 Implement Order Service list and detail endpoints
+  - [x] 7.3 Implement Order Service list and detail endpoints
     - GET /api/v1/orders — paginated list of user's orders (customer sees own, staff/admin see all)
     - GET /api/v1/orders/{id} — order detail with items and status history
     - PATCH /api/v1/orders/{id}/cancel — cancel order (customer owner, staff, or admin only)
@@ -303,28 +303,28 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Verify shipment status only transitions forward: processing→shipping→delivered; backward transitions rejected
     - **Validates: Requirements 10.3, 10.5**
 
-- [~] 10. Checkpoint — Full purchase journey
+- [x] 10. Checkpoint — Full purchase journey
   - Verify end-to-end: register → login → browse → add to cart → checkout → payment success → shipment created
   - Verify payment failure path: order status becomes payment_failed
   - Verify shipping retry logic (Order Service retries 3x with 2s interval)
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 11. Phase 2 — Frontend Checkout and Order Tracking
-  - [-] 11.1 Implement Frontend checkout page
+- [x] 11. Phase 2 — Frontend Checkout and Order Tracking
+  - [x] 11.1 Implement Frontend checkout page
     - Create checkout page with shipping address form, payment method selector, order summary
     - Call POST /api/orders/checkout on submit
     - Display payment status feedback (success/failure)
     - Redirect to order confirmation on success
     - _Requirements: 22.6_
 
-  - [~] 11.2 Implement Frontend order tracking page
+  - [x] 11.2 Implement Frontend order tracking page
     - Create order tracking page with status timeline (created → payment_pending → paid → shipping → delivered)
     - Display items purchased with price snapshot data
     - Display shipping details and tracking code
     - _Requirements: 22.7_
 
 - [ ] 12. Phase 3 — AI Service Setup and RAG Chatbot
-  - [~] 12.1 Create AI Service scaffold (FastAPI)
+  - [x] 12.1 Create AI Service scaffold (FastAPI)
     - Initialize FastAPI project structure: app/main.py, app/api/, app/core/, app/application/, app/infrastructure/, app/ml/
     - Implement core config, structured logging, error handling matching standard envelope format
     - Implement catalog_client.py using ServiceClient pattern (validate products against Catalog Service)
@@ -333,7 +333,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Add healthcheck endpoints (GET /healthz, GET /readyz)
     - _Requirements: 20.1, 20.2, 19.1, 19.2_
 
-  - [~] 12.2 Implement AI Service data models and migrations
+  - [x] 12.2 Implement AI Service data models and migrations
     - Create EmbeddingDocument model (UUID PK, source_type, source_id, title, content, embedding vector(768), metadata JSON, timestamps)
     - Create ChatLog model (UUID PK, user_id nullable, session_id, message, response, recommended_product_ids JSON, grounded bool, hallucination_risk, created_at)
     - Create UserInteraction model (UUID PK, user_id, product_id, event_type, timestamp)
@@ -341,7 +341,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Apply migrations with pgvector extension enabled
     - _Requirements: 12.6_
 
-  - [~] 12.3 Implement RAG ingestion pipeline
+  - [-] 12.3 Implement RAG ingestion pipeline
     - Create management command to export catalog products as embedding documents (title + description + brand + category + price + attributes)
     - Create management command to ingest TechShop FAQ/policy documents (warranty, shipping, return, payment policies)
     - Normalize text, chunk documents, generate embeddings (sentence-transformers or similar)
@@ -350,7 +350,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Handle idempotent re-ingestion (skip existing, update changed)
     - _Requirements: 12.6, 24.5, 24.7, 24.8_
 
-  - [~] 12.4 Implement RAG chat endpoint
+  - [-] 12.4 Implement RAG chat endpoint
     - POST /api/v1/chat — accept message (1-1000 chars), user_id (optional), context (current_product_id, cart_product_ids)
     - Retrieve top-5 relevant documents by cosine similarity from pgvector
     - If no document exceeds 0.5 similarity score, return AI_NO_CONTEXT_FOUND error
@@ -370,7 +370,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Test guest rate limiting (10 queries per session)
     - _Requirements: 12.1, 12.3, 12.7, 12.8_
 
-  - [~] 12.6 Implement Frontend AI chatbot interface
+  - [-] 12.6 Implement Frontend AI chatbot interface
     - Create AI chatbot drawer/full-page component
     - Display 3-5 suggested prompts for new conversations
     - Render chat bubbles distinguishing user messages from AI responses
@@ -386,7 +386,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
   - Ensure all tests pass, ask the user if questions arise.
 
 - [ ] 14. Phase 4 — AI Sentiment Analysis Model
-  - [~] 14.1 Implement sentiment analysis model and endpoint
+  - [-] 14.1 Implement sentiment analysis model and endpoint
     - Create sentiment model module (BERT/PhoBERT/mBERT) in app/ml/sentiment/
     - Implement model loading, tokenization, and inference pipeline
     - POST /api/v1/sentiment — accept review text, return label (positive/neutral/negative), confidence score (0.0-1.0), model_version

@@ -1,32 +1,84 @@
 import React, { useState, useRef, useEffect } from "react";
-import { MessageSquare, X, Send, Sparkles, Loader2, ArrowDownCircle, HelpCircle } from "lucide-react";
-import { Message, Product } from "../types";
-import MarkdownRenderer from "./MarkdownRenderer";
+import { MessageSquare, X, Send, Sparkles, Loader2, ExternalLink, ShoppingBag, AlertCircle } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Product } from "../types";
+import { apiClient, ApiError } from "@frontend/src/lib/api-client";
 
 interface AIChatBotProps {
   products: Product[];
   selectedProductId?: string;
 }
 
-const STARTER_CHAT: Message[] = [
-  {
-    id: "welcome",
-    sender: "ai",
-    text: "Welcome to the specimen advisory bureau. I am fully authorized with specs, metrics, and cognitive hardware logs.\n\n*   Compare component ergonomics and mechanical friction\n*   Inquire about display HUD specs or wrist fatigue mitigation\n*   Examine speculative intelligence reports on wearables\n\nWhich component parameters shall we catalog today?",
-    timestamp: new Date()
-  }
+interface ProductRecommendation {
+  id: string;
+  name: string;
+  price: number | string;
+  image_url?: string;
+  reason?: string;
+}
+
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  products?: ProductRecommendation[];
+  timestamp: Date;
+  isError?: boolean;
+}
+
+interface AIChatResponse {
+  answer: string;
+  products?: ProductRecommendation[];
+  grounded?: boolean;
+  hallucination_risk?: string;
+  sources?: string[];
+}
+
+const SUGGESTED_PROMPTS = [
+  { label: "Laptop for AI learning", text: "Recommend a laptop for AI learning under 20M VND" },
+  { label: "Best headphones for meetings", text: "Which headphones are best for online meetings?" },
+  { label: "Compare phones for photos", text: "Compare iPhone and Samsung for photography" },
 ];
+
+function MiniProductCard({ product }: { product: ProductRecommendation }) {
+  const price = typeof product.price === "string" ? parseFloat(product.price) : product.price;
+
+  return (
+    <Link
+      to={`/products/${product.id}`}
+      className="flex gap-2 p-2 bg-white border border-gray-200 rounded-lg hover:border-blue-300 hover:shadow-sm transition-all group"
+    >
+      <div className="w-10 h-10 shrink-0 rounded bg-gray-100 overflow-hidden">
+        {product.image_url ? (
+          <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <ShoppingBag className="w-4 h-4 text-gray-400" />
+          </div>
+        )}
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[11px] font-semibold text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+          {product.name}
+        </p>
+        <p className="text-[10px] font-bold text-blue-600">
+          {price > 0 ? `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "Contact"}
+        </p>
+      </div>
+      <ExternalLink className="w-3 h-3 text-gray-400 group-hover:text-blue-500 shrink-0 mt-1" />
+    </Link>
+  );
+}
 
 export default function AIChatBot({ products, selectedProductId }: AIChatBotProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>(STARTER_CHAT);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to bottom helper
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -35,213 +87,249 @@ export default function AIChatBot({ products, selectedProductId }: AIChatBotProp
     if (isOpen) {
       scrollToBottom();
       setUnreadCount(0);
-    } else if (messages.length > STARTER_CHAT.length) {
-      setUnreadCount((c) => c + 1);
     }
   }, [messages, isOpen]);
 
-  const handleSendMessage = async (rawText: string) => {
-    const text = rawText.trim();
-    if (!text) return;
+  const sendMessage = async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || isLoading) return;
 
-    const userMessage: Message = {
-      id: `m-usr-${Date.now()}`,
-      sender: "user",
-      text,
-      timestamp: new Date()
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content: trimmed,
+      timestamp: new Date(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInputText("");
-    setLoading(true);
+    setIsLoading(true);
 
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
+      // Get cart product IDs from localStorage
+      let cartProductIds: string[] = [];
+      try {
+        const storedCart = localStorage.getItem("aether_cart");
+        if (storedCart) {
+          const cartItems = JSON.parse(storedCart);
+          cartProductIds = cartItems.map((item: { product: { id: string } }) => item.product.id);
+        }
+      } catch {
+        // ignore localStorage errors
+      }
+
+      const response = await apiClient.post<AIChatResponse>("/ai/chat", {
+        message: trimmed,
+        context: {
+          current_product_id: selectedProductId || undefined,
+          cart_product_ids: cartProductIds.length > 0 ? cartProductIds : undefined,
         },
-        body: JSON.stringify({
-          messages: [...messages, userMessage].map((m) => ({
-            sender: m.sender,
-            text: m.text
-          })),
-          selectedProductId
-        })
       });
 
-      const data = await res.json();
-      if (res.ok && data.text) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `m-ai-${Date.now()}`,
-            sender: "ai",
-            text: data.text,
-            timestamp: new Date()
-          }
-        ]);
-      } else {
-        throw new Error(data.error || "Failed to contact chat server");
+      const aiMessage: ChatMessage = {
+        id: `ai-${Date.now()}`,
+        role: "assistant",
+        content: response.answer || "I received your message but have no specific answer at this time.",
+        products: response.products?.slice(0, 5),
+        timestamp: new Date(),
+      };
+
+      setMessages((prev) => [...prev, aiMessage]);
+
+      if (!isOpen) {
+        setUnreadCount((c) => c + 1);
       }
-    } catch (err: any) {
-      console.error(err);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `m-err-${Date.now()}`,
-          sender: "ai",
-          text: `⚠️ **Sound connection issue**: Or your Gemini API Secret key is missing. ${err.message || ""}`,
-          timestamp: new Date()
-        }
-      ]);
+    } catch (err: unknown) {
+      const errorMessage =
+        err instanceof ApiError
+          ? err.message
+          : "Sorry, I encountered an error. Please try again.";
+
+      const errorMsg: ChatMessage = {
+        id: `error-${Date.now()}`,
+        role: "assistant",
+        content: errorMessage,
+        timestamp: new Date(),
+        isError: true,
+      };
+
+      setMessages((prev) => [...prev, errorMsg]);
+
+      if (!isOpen) {
+        setUnreadCount((c) => c + 1);
+      }
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    handleSendMessage(inputText);
+    sendMessage(inputText);
   };
 
-  const QUICK_QUESTIONS = [
-    { label: "Suggest the best keyboard", text: "What is the best mechanical keyboard in your inventory, and what switches does it use?" },
-    { label: "Recommend wearable AR", text: "Are there any wearable AR glasses on stock? Detail their features and HUD layout." },
-    { label: "Rugged durability choice", text: "Which product in your watch catalog offers high physical durability and long battery life?" }
-  ];
+  const showSuggestions = messages.length === 0 && !isLoading;
 
   return (
     <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end">
-      
-      {/* Expanded Widget Frame */}
+      {/* Chat Panel */}
       {isOpen && (
-        <div className="w-[92vw] sm:w-[400px] h-[550px] bg-editorial-bg border border-editorial-text/25 rounded-2xl flex flex-col shadow-2xl overflow-hidden mb-4 animate-in slide-in-from-bottom-6 duration-200">
-          
+        <div className="w-[92vw] sm:w-[400px] h-[560px] bg-gray-50 border border-gray-200 rounded-2xl flex flex-col shadow-2xl overflow-hidden mb-4 animate-in slide-in-from-bottom-6 duration-200">
           {/* Header */}
-          <div className="bg-editorial-text p-4 text-editorial-bg flex items-center justify-between">
+          <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4 text-white flex items-center justify-between shrink-0">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-editorial-bg/10 border border-editorial-bg/25 flex items-center justify-center relative">
-                <Sparkles className="w-4.5 h-4.5 text-editorial-bg" />
+              <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
+                <Sparkles className="w-4 h-4 text-white" />
               </div>
               <div>
-                <h3 className="serif text-sm font-bold leading-none">Specimen Advice Bureau</h3>
-                <p className="text-[9px] uppercase tracking-wider font-mono text-editorial-bg/75 mt-1">Primed with active catalog logs</p>
+                <h3 className="text-sm font-bold leading-none">TechShop AI</h3>
+                <p className="text-[10px] text-white/75 mt-0.5">Product advisor</p>
               </div>
             </div>
-
-            <button
-              onClick={() => setIsOpen(false)}
-              className="w-7 h-7 text-editorial-bg/85 hover:text-editorial-bg rounded-full hover:bg-editorial-bg/10 flex items-center justify-center transition-colors cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <Link
+                to="/chat"
+                className="text-[10px] text-white/80 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors"
+                title="Open full chat"
+              >
+                Full page
+              </Link>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="w-7 h-7 text-white/85 hover:text-white rounded-full hover:bg-white/10 flex items-center justify-center transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
-          {/* Messages Flow Area */}
-          <div className="flex-grow overflow-y-auto p-4 space-y-4">
-            {messages.map((m) => (
+          {/* Messages Area */}
+          <div className="flex-grow overflow-y-auto p-3 space-y-3">
+            {/* Suggestions for empty state */}
+            {showSuggestions && (
+              <div className="flex flex-col items-center justify-center h-full space-y-4 py-6">
+                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                  <MessageSquare className="w-6 h-6 text-white" />
+                </div>
+                <div className="text-center space-y-1">
+                  <p className="text-sm font-semibold text-gray-900">How can I help?</p>
+                  <p className="text-xs text-gray-500">Ask about products or get recommendations</p>
+                </div>
+                <div className="w-full space-y-1.5 px-2">
+                  {SUGGESTED_PROMPTS.map((q, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => sendMessage(q.text)}
+                      disabled={isLoading}
+                      className="text-left text-[11px] text-gray-700 hover:text-blue-700 hover:bg-blue-50 bg-white border border-gray-200 py-2 px-3 rounded-lg w-full truncate transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {q.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Chat Messages */}
+            {messages.map((msg) => (
               <div
-                key={m.id}
-                className={`flex gap-2.5 max-w-[85%] ${m.sender === "user" ? "ml-auto flex-row-reverse" : "mr-auto"}`}
+                key={msg.id}
+                className={`flex gap-2 max-w-[88%] ${msg.role === "user" ? "ml-auto flex-row-reverse" : "mr-auto"}`}
               >
-                {/* Avatar */}
-                {m.sender === "ai" && (
-                  <div className="w-6 h-6 rounded-full bg-editorial-paper border border-editorial-text/20 flex items-center justify-center shrink-0">
-                    <Sparkles className="w-3 h-3 text-editorial-text/75" />
+                {msg.role === "assistant" && (
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shrink-0">
+                    <Sparkles className="w-3 h-3 text-white" />
                   </div>
                 )}
 
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   <div
-                    className={`p-3 rounded-2xl text-xs leading-relaxed text-left shadow-none font-sans ${
-                      m.sender === "user"
-                        ? "bg-editorial-text text-editorial-bg text-right"
-                        : "bg-editorial-paper border border-editorial-text/10 text-editorial-text"
-                    }`}
+                    className={`px-3 py-2 rounded-2xl text-xs leading-relaxed ${msg.role === "user"
+                        ? "bg-blue-600 text-white rounded-tr-sm"
+                        : msg.isError
+                          ? "bg-red-50 border border-red-200 text-red-700 rounded-tl-sm"
+                          : "bg-white border border-gray-200 text-gray-800 rounded-tl-sm"
+                      }`}
                   >
-                    <MarkdownRenderer content={m.text} />
+                    {msg.isError && (
+                      <div className="flex items-center gap-1 mb-1">
+                        <AlertCircle className="w-3 h-3 text-red-500" />
+                        <span className="text-[10px] font-medium text-red-600">Error</span>
+                      </div>
+                    )}
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
                   </div>
-                  <p className="text-[9px] text-editorial-text/40 text-left font-mono">
-                    {m.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+
+                  {/* Product Cards */}
+                  {msg.products && msg.products.length > 0 && (
+                    <div className="space-y-1.5">
+                      {msg.products.map((product) => (
+                        <MiniProductCard key={product.id} product={product} />
+                      ))}
+                    </div>
+                  )}
+
+                  <p className="text-[9px] text-gray-400">
+                    {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                   </p>
                 </div>
               </div>
             ))}
 
-            {loading && (
-              <div className="flex gap-2.5 max-w-[85%] mr-auto items-center">
-                <div className="w-6 h-6 rounded-full bg-editorial-paper border border-editorial-text/15 flex items-center justify-center shrink-0">
-                  <Sparkles className="w-3 h-3 text-editorial-text/60 animate-spin" />
+            {/* Loading indicator */}
+            {isLoading && (
+              <div className="flex gap-2 max-w-[85%] mr-auto items-center">
+                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-3 h-3 text-white animate-pulse" />
                 </div>
-                <div className="bg-editorial-paper border border-editorial-text/10 text-editorial-text/50 text-[10px] py-1.5 px-3 rounded-xl font-sans italic flex items-center gap-1.5 animate-pulse shadow-none">
-                  <Loader2 className="w-3 h-3 text-editorial-text/40 animate-spin" />
-                  <span>Advisory composing advice...</span>
+                <div className="bg-white border border-gray-200 text-gray-500 text-[11px] py-2 px-3 rounded-xl flex items-center gap-1.5 animate-pulse">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>Thinking...</span>
                 </div>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Suggested Prompts Area */}
-          <div className="bg-editorial-paper border-t border-editorial-text/15 p-3 space-y-1.5 shrink-0">
-            <p className="text-[9px] text-editorial-text/50 font-bold uppercase tracking-wider font-mono">Quick consultations:</p>
-            <div className="flex flex-col gap-1">
-              {QUICK_QUESTIONS.map((q, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleSendMessage(q.text)}
-                  disabled={loading}
-                  className="text-left text-[10px] text-editorial-text hover:bg-editorial-accent bg-transparent border border-editorial-text/15 py-1.5 px-3 rounded-full w-full truncate transition-all duration-150 cursor-pointer disabled:opacity-50 font-sans"
-                >
-                  {q.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Form Input Message */}
-          <form onSubmit={handleFormSubmit} className="bg-editorial-paper p-3 border-t border-editorial-text/15 flex gap-2 shrink-0 font-sans">
+          {/* Input */}
+          <form onSubmit={handleFormSubmit} className="bg-white p-3 border-t border-gray-200 flex gap-2 shrink-0">
             <input
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              disabled={loading}
-              placeholder="Ask advisory for specs..."
-              className="flex-grow bg-editorial-bg border border-editorial-text/15 hover:border-editorial-text/30 focus:border-editorial-text focus:outline-none rounded-xl px-4 py-2.5 text-xs text-editorial-text transition-colors duration-200"
+              disabled={isLoading}
+              placeholder="Ask about products..."
+              className="flex-grow bg-gray-100 border border-gray-200 focus:border-blue-400 focus:outline-none rounded-xl px-3 py-2.5 text-xs text-gray-900 transition-colors"
             />
             <button
               type="submit"
-              disabled={!inputText.trim() || loading}
-              className="bg-editorial-text text-editorial-bg rounded-lg h-9 w-9 flex items-center justify-center hover:bg-editorial-text/90 disabled:opacity-30 cursor-pointer transition-all duration-300"
+              disabled={!inputText.trim() || isLoading}
+              className="bg-blue-600 text-white rounded-lg h-9 w-9 flex items-center justify-center hover:bg-blue-700 disabled:opacity-30 cursor-pointer transition-all"
             >
               <Send className="w-3.5 h-3.5 shrink-0" />
             </button>
           </form>
-
         </div>
       )}
 
-      {/* Glow Bubble Circle Trigger */}
+      {/* Floating Trigger Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="group relative flex items-center justify-center w-12 h-12 rounded-full bg-editorial-text hover:bg-editorial-text/95 text-editorial-bg border border-editorial-text shadow-xl transition-all duration-350 cursor-pointer z-50 hover:scale-[1.03]"
+        className="group relative flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-xl transition-all duration-300 cursor-pointer z-50 hover:scale-105"
       >
         {isOpen ? (
           <X className="w-5 h-5" />
         ) : (
-          <MessageSquare className="w-5 h-5 hover:scale-105 duration-200" />
+          <MessageSquare className="w-5 h-5" />
         )}
 
-        {/* Counter Badge if unread are available and closed */}
+        {/* Unread Badge */}
         {!isOpen && unreadCount > 0 && (
-          <span className="absolute -top-1.5 -right-1.5 flex h-4.5 w-4.5 items-center justify-center bg-editorial-text text-editorial-bg text-[9px] font-bold font-mono rounded-full border border-editorial-bg shadow-sm">
+          <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center bg-red-500 text-white text-[9px] font-bold rounded-full border-2 border-white shadow-sm">
             {unreadCount}
           </span>
         )}
-
       </button>
-
     </div>
   );
 }
