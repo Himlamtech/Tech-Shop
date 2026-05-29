@@ -67,7 +67,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Generate and apply migrations
     - _Requirements: 4.1, 4.5, 6.1_
 
-  - [-] 3.2 Implement Catalog Service serializers and validation
+  - [x] 3.2 Implement Catalog Service serializers and validation
     - Create CategorySerializer with nested children support
     - Create ProductSerializer with image nesting, field validation (price range, stock range, name length)
     - Create ProductImageSerializer
@@ -75,7 +75,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Create filter/search query parameter serializers
     - _Requirements: 4.1, 4.2, 5.1, 5.2, 5.3, 5.4_
 
-  - [~] 3.3 Implement Catalog Service views and URL routing
+  - [x] 3.3 Implement Catalog Service views and URL routing
     - GET /api/v1/products — paginated list with filters (category, brand, price range, rating), sorting (price, rating, newest), keyword search
     - GET /api/v1/products/{id} — full product detail with images and attributes
     - POST /api/v1/products — admin create product
@@ -88,7 +88,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - GET /api/v1/categories/{slug}/products — products by category including subcategories
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.6, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 6.2, 6.3, 6.4, 6.5, 6.6_
 
-  - [-] 3.4 Implement Catalog Service product import management command
+  - [x] 3.4 Implement Catalog Service product import management command
     - Create `seed_products` management command that fetches from DummyJSON API
     - Map DummyJSON fields: title→name, thumbnail→primary image, images→additional images, price, stock, category, brand, description
     - Handle duplicate SKU by updating existing product (idempotent)
@@ -104,7 +104,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Test permissions (admin-only endpoints reject customer/guest)
     - _Requirements: 4.1, 4.2, 5.1, 5.6, 5.7, 5.8, 6.3, 6.4_
 
-  - [~] 3.6 Implement Frontend homepage and product listing
+  - [-] 3.6 Implement Frontend homepage and product listing
     - Create homepage with hero section, category shortcuts (8 categories), featured products grid (4-8 products)
     - Create product listing page with sidebar filters (category, brand, price range, rating), sort options, paginated grid (12 per page)
     - Create product card component with image, name, price, rating, stock badge
@@ -132,7 +132,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Generate and apply migrations
     - _Requirements: 1.1, 2.1, 2.5_
 
-  - [-] 5.2 Implement Identity Service authentication endpoints
+  - [x] 5.2 Implement Identity Service authentication endpoints
     - POST /api/v1/auth/register — create user with customer role, hash password, return access + refresh tokens
     - POST /api/v1/auth/login — validate credentials, return access (15min) + refresh (7d) tokens, include user_id/role/issuer/exp in JWT payload
     - POST /api/v1/auth/refresh — validate refresh token, issue new token pair, invalidate old refresh token
@@ -141,7 +141,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Return generic UNAUTHORIZED on invalid credentials (don't reveal which field is wrong)
     - _Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 25.7_
 
-  - [~] 5.3 Implement JWT validation middleware for all services
+  - [x] 5.3 Implement JWT validation middleware for all services
     - Create shared JWT validation logic using public key (no callback to Identity Service)
     - Extract user_id and role from token claims
     - Return 401 UNAUTHORIZED for missing/expired/malformed/invalid-signature tokens
@@ -156,7 +156,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Test RBAC permissions (admin, staff, customer, guest access patterns)
     - _Requirements: 1.1, 1.2, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.6, 3.2, 3.3, 3.4_
 
-  - [~] 5.5 Implement Frontend authentication flow
+  - [x] 5.5 Implement Frontend authentication flow
     - Create login page with email/password form
     - Create registration page
     - Implement token storage, auto-refresh, and logout
@@ -165,7 +165,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - _Requirements: 22.5, 22.6_
 
 - [ ] 6. Phase 2 — Cart Service
-  - [~] 6.1 Implement Cart Service models and migrations
+  - [-] 6.1 Implement Cart Service models and migrations
     - Create Cart model with UUID PK, user_id (unique — one cart per customer), timestamps
     - Create CartItem model with UUID PK, cart FK, product_id, quantity (1-99), timestamps; unique constraint on (cart_id, product_id)
     - Generate and apply migrations
@@ -250,7 +250,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - **Validates: Requirements 23.2, 23.4**
 
 - [ ] 8. Phase 2 — Payment Service
-  - [~] 8.1 Implement Payment Service models and migrations
+  - [-] 8.1 Implement Payment Service models and migrations
     - Create PaymentTransaction model with UUID PK, order_id, amount (Decimal 2dp), status (pending/success/failed), idempotency_key (unique), timestamps
     - Create PaymentStatusHistory model with UUID PK, transaction FK, from_status, to_status, created_at
     - Configure MySQL database connection
@@ -277,7 +277,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - **Validates: Requirements 9.6**
 
 - [ ] 9. Phase 2 — Shipping Service
-  - [~] 9.1 Implement Shipping Service models and migrations
+  - [-] 9.1 Implement Shipping Service models and migrations
     - Create Shipment model with UUID PK, order_id (unique), tracking_code (unique, 8-20 alphanumeric), status (processing/shipping/delivered), shipping_address, timestamps
     - Create ShipmentStatusHistory model with UUID PK, shipment FK, from_status, to_status, created_at
     - Define SHIPMENT_TRANSITIONS: processing→shipping, shipping→delivered (forward-only)

@@ -7,7 +7,6 @@ Provides:
 - JWTAuthenticationMiddleware: extracts and validates JWT tokens
 """
 
-import json
 import logging
 import time
 import uuid
@@ -100,37 +99,96 @@ class JWTAuthenticationMiddleware:
     On failure (missing, expired, invalid), sets both to None
     and lets permission classes handle enforcement.
 
-    Uses the shared public key for RS256 verification.
+    Supports both RS256 (production with public key file) and HS256
+    (development with SECRET_KEY) algorithms. Falls back to HS256
+    when no public key file is available.
+
+    Public paths still attempt JWT extraction (for logging/personalization)
+    but never block requests without valid tokens.
     """
 
-    # Paths that should skip JWT validation entirely
+    # Paths that skip JWT validation entirely (infrastructure endpoints)
     PUBLIC_PATHS = [
         "/healthz",
         "/readyz",
         "/admin/",
     ]
 
+    # Paths that allow unauthenticated access for specific HTTP methods.
+    # Format: (path_prefix, allowed_methods) where allowed_methods is a set.
+    # If a token IS present on these paths, it will still be validated and
+    # user_id/user_role will be set. But missing tokens won't block the request.
+    PUBLIC_READ_PATHS = [
+        ("/api/v1/products", {"GET"}),
+        ("/api/v1/categories", {"GET"}),
+        ("/api/v1/reviews", {"GET"}),
+        ("/api/v1/auth/", {"GET", "POST"}),
+    ]
+
     def __init__(self, get_response):
         self.get_response = get_response
         self._public_key = None
+        self._verification_key = None
+        self._algorithm = None
 
-    def _get_public_key(self):
-        """Load the JWT public key from file (cached after first load)."""
-        if self._public_key is None:
-            key_path = getattr(settings, "JWT_PUBLIC_KEY_PATH", None)
-            if key_path:
-                try:
-                    with open(key_path, "r") as f:
-                        self._public_key = f.read()
-                except (FileNotFoundError, IOError):
-                    logger.warning("JWT public key file not found: %s", key_path)
-                    self._public_key = ""
-        return self._public_key
+    def _get_verification_key_and_algorithm(self):
+        """
+        Determine the verification key and algorithm.
+
+        Priority:
+        1. RS256 with public key file (production)
+        2. HS256 with SECRET_KEY (development fallback)
+
+        Results are cached after first successful load.
+        """
+        if self._verification_key is not None:
+            return self._verification_key, self._algorithm
+
+        # Try loading RSA public key
+        key_path = getattr(settings, "JWT_PUBLIC_KEY_PATH", None)
+        if key_path:
+            try:
+                with open(key_path, "r") as f:
+                    public_key = f.read().strip()
+                    if public_key:
+                        self._verification_key = public_key
+                        self._algorithm = getattr(settings, "JWT_ALGORITHM", "RS256")
+                        return self._verification_key, self._algorithm
+            except (FileNotFoundError, IOError):
+                logger.debug("JWT public key file not found: %s", key_path)
+
+        # Fallback to HS256 with SECRET_KEY for development
+        secret_key = getattr(settings, "SECRET_KEY", None)
+        if secret_key:
+            self._verification_key = secret_key
+            self._algorithm = "HS256"
+            logger.info(
+                "JWT validation using HS256 fallback (no public key file available)"
+            )
+            return self._verification_key, self._algorithm
+
+        # No verification key available at all
+        self._verification_key = ""
+        self._algorithm = None
+        logger.warning("No JWT verification key available")
+        return self._verification_key, self._algorithm
 
     def _is_public_path(self, path):
-        """Check if the request path is public (no auth needed)."""
+        """Check if the request path is fully public (skip JWT entirely)."""
         for public_path in self.PUBLIC_PATHS:
             if path.startswith(public_path):
+                return True
+        return False
+
+    def _is_public_read_path(self, path, method):
+        """
+        Check if the request is a public read path.
+
+        These paths allow unauthenticated access for specific methods
+        but still extract JWT if present.
+        """
+        for path_prefix, allowed_methods in self.PUBLIC_READ_PATHS:
+            if path.startswith(path_prefix) and method in allowed_methods:
                 return True
         return False
 
@@ -138,7 +196,11 @@ class JWTAuthenticationMiddleware:
         request.user_id = None
         request.user_role = None
 
-        if not self._is_public_path(request.path):
+        if self._is_public_path(request.path):
+            # Infrastructure paths: skip JWT entirely
+            pass
+        else:
+            # Always attempt JWT extraction (for both protected and public-read paths)
             self._extract_jwt(request)
 
         # Update thread-local context with user info
@@ -163,15 +225,15 @@ class JWTAuthenticationMiddleware:
 
         token = auth_header[7:]  # Strip "Bearer " prefix
 
-        public_key = self._get_public_key()
-        if not public_key:
+        verification_key, algorithm = self._get_verification_key_and_algorithm()
+        if not verification_key or not algorithm:
             return
 
         try:
             payload = jwt.decode(
                 token,
-                public_key,
-                algorithms=[getattr(settings, "JWT_ALGORITHM", "RS256")],
+                verification_key,
+                algorithms=[algorithm],
                 issuer=getattr(settings, "JWT_ISSUER", None),
                 options={"verify_exp": True},
             )
