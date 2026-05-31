@@ -7,9 +7,9 @@ to sentence-transformers for local/demo flows.
 
 import logging
 from functools import lru_cache
+from typing import Any
 
 import numpy as np
-from sentence_transformers import SentenceTransformer
 
 from app.core.config import get_settings
 
@@ -17,11 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=1)
-def _get_model() -> SentenceTransformer | None:
+def _get_model() -> Any:
     """Load and cache the sentence-transformer model when available."""
     settings = get_settings()
     model_name = settings.embedding_model
     try:
+        from sentence_transformers import SentenceTransformer
+
         logger.info("Loading embedding model: %s", model_name)
         model = SentenceTransformer(model_name)
         logger.info("Embedding model loaded successfully (dim=%d)", model.get_sentence_embedding_dimension())

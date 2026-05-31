@@ -51,6 +51,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - ./keys:/app/keys:ro
     networks:
       - internal
     restart: unless-stopped
@@ -90,6 +92,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - ./keys:/app/keys:ro
     networks:
       - internal
     restart: unless-stopped
@@ -128,6 +132,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - ./keys:/app/keys:ro
     networks:
       - internal
     restart: unless-stopped
@@ -166,6 +172,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - ./keys:/app/keys:ro
     networks:
       - internal
     restart: unless-stopped
@@ -204,6 +212,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - ./keys:/app/keys:ro
     networks:
       - internal
     restart: unless-stopped
@@ -243,6 +253,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - ./keys:/app/keys:ro
     networks:
       - internal
     restart: unless-stopped
@@ -281,6 +293,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - ./keys:/app/keys:ro
     networks:
       - internal
     restart: unless-stopped
@@ -319,6 +333,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - ./keys:/app/keys:ro
     networks:
       - internal
     restart: unless-stopped

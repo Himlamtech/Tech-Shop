@@ -11,5 +11,6 @@ urlpatterns = [
     path("readyz", readiness, name="readyz"),
     path("api/v1/auth/", include("apps.identity.urls")),
     path("api/v1/admin/", include(admin_urlpatterns)),
+    path("api/v1/users/", include(admin_urlpatterns)),
     path("admin/", admin.site.urls),
 ]
