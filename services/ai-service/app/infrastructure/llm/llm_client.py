@@ -2,7 +2,7 @@
 LLM client wrapper for the AI Service.
 
 Supports:
-- Production: OpenAI API calls (gpt-4o-mini or configured model)
+- Production: OpenAI-compatible API calls (gpt-5.4-nano or configured model)
 - Demo/Development: Mock response generation based on retrieved documents
 
 The mock mode activates automatically when no API key is configured.
@@ -52,6 +52,7 @@ class LLMClient:
 
     def __init__(self):
         self.api_key = settings.llm_api_key
+        self.base_url = settings.llm_base_url
         self.model = settings.llm_model
         self.max_tokens = settings.llm_max_tokens
         self.temperature = settings.llm_temperature
@@ -86,7 +87,10 @@ class LLMClient:
         try:
             import openai
 
-            client = openai.AsyncOpenAI(api_key=self.api_key)
+            client = openai.AsyncOpenAI(
+                api_key=self.api_key,
+                base_url=self.base_url,
+            )
 
             context_text = self._build_context_text(context_documents)
 

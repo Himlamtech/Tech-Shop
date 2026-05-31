@@ -12,6 +12,7 @@ pydantic-settings==2.7.1
 
 # HTTP client (async inter-service calls)
 httpx==0.28.1
+openai==1.109.1
 
 # JWT validation
 python-jose[cryptography]==3.3.0

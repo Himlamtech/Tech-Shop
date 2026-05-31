@@ -57,7 +57,7 @@ techshop/
 
 | Service | Framework | DB | Engine | Port | Responsibility |
 |---|---|---|---|---:|---|
-| gateway | Nginx | N/A | N/A | 80 | API routing, static routing |
+| gateway | Nginx | N/A | N/A | 1912 | API routing, static routing |
 | frontend | React/Next/Vite | N/A | N/A | 3000 | Web UI |
 | identity-service | Django DRF | identity_db | MySQL | 8001 | Auth, users, RBAC |
 | catalog-service | Django DRF | catalog_db | PostgreSQL | 8002 | Products, categories, inventory, images |
@@ -175,9 +175,16 @@ Optional:
 
 - Create service folders.
 - Add Docker Compose.
-- Add `.env.example`.
+- Add a single root `.env.example` and a single runtime root `.env`.
 - Add healthcheck endpoint for every service.
 - Add gateway route skeleton.
+
+Environment rule:
+
+```txt
+The whole project uses one shared root .env file only.
+No per-service .env files are allowed.
+```
 
 ### Phase 1 — Catalog first
 
@@ -302,4 +309,3 @@ A feature is done only when:
 - Docker service runs.
 - Frontend integration works or API is documented.
 - Screenshot can be used in report.
-

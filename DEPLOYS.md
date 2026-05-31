@@ -102,7 +102,7 @@ services:
   gateway:
     build: ./gateway
     ports:
-      - "80:80"
+      - "${GATEWAY_PORT:-1912}:80"
     depends_on:
       - frontend
       - identity-service
@@ -119,7 +119,12 @@ services:
 
   identity-service:
     build: ./services/identity-service
-    env_file: ./services/identity-service/.env
+    env_file:
+      - ./.env
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER}:${MYSQL_PASSWORD}@${IDENTITY_DB_HOST}:${IDENTITY_DB_PORT}/${IDENTITY_DB_NAME}
+      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY_PATH}
+      JWT_PRIVATE_KEY: ${JWT_PRIVATE_KEY_PATH}
     depends_on:
       identity-mysql:
         condition: service_healthy
@@ -345,8 +350,8 @@ server {
 
 ```bash
 cp .env.example .env
-cp services/catalog-service/.env.example services/catalog-service/.env
-# repeat for services
+
+# Edit root .env once. All services read from this single file.
 
 docker compose build
 docker compose up -d
@@ -360,6 +365,26 @@ docker compose exec catalog-service python manage.py migrate
 docker compose exec catalog-service python manage.py seed_products --source dummyjson --limit 100
 docker compose exec ai-service python -m app.jobs.ingest_catalog
 ```
+
+## 13.1 Environment Strategy
+
+- The project uses exactly one runtime env file: root `.env`.
+- Do not create per-service `.env` files under `services/` or `frontend/`.
+- `docker-compose.yml` maps shared root variables into each service's runtime environment.
+- AI credentials are shared by `frontend` and `ai-service` through the root `.env` keys below:
+
+```env
+OPENAI_API_KEY=...
+OPENAI_BASE_URL=https://api.yescale.io/v1
+OPENAI_CHAT_MODEL=gpt-5.4-nano
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_MAX_TOKENS=1024
+OPENAI_TEMPERATURE=0.7
+EMBEDDING_DIMENSION=1536
+GATEWAY_PORT=1912
+```
+
+- If you previously stored AI embeddings with dimension `384`, recreate or migrate the AI vector store before switching to `text-embedding-3-small` (`1536` dimensions).
 
 ## 14. Logs
 
@@ -505,4 +530,3 @@ Before presentation:
 - [ ] Admin dashboard visible.
 - [ ] Logs available for proof.
 - [ ] Screenshots saved into `docs/screenshots/`.
-

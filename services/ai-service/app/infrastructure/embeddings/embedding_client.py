@@ -1,12 +1,12 @@
 """
 Embedding generation client for the AI Service.
 
-Uses sentence-transformers to generate embeddings for text queries.
-Falls back to a random vector in demo mode if the model is unavailable.
+Prefers OpenAI-compatible API embeddings when configured.
+Falls back to a local sentence-transformers model or a deterministic
+random vector in demo mode.
 """
 
 import logging
-from typing import Optional
 
 import numpy as np
 
@@ -53,6 +53,9 @@ class EmbeddingClient:
     """
 
     def __init__(self):
+        self.api_key = settings.llm_api_key
+        self.base_url = settings.llm_base_url
+        self.model = settings.embedding_model
         self.dimension = settings.embedding_dimension
 
     async def generate_embedding(self, text: str) -> list[float]:
@@ -65,6 +68,35 @@ class EmbeddingClient:
         Returns:
             List of floats representing the embedding vector.
         """
+        if self.api_key:
+            try:
+                import openai
+
+                client = openai.AsyncOpenAI(
+                    api_key=self.api_key,
+                    base_url=self.base_url,
+                )
+                response = await client.embeddings.create(
+                    model=self.model,
+                    input=text,
+                )
+                embedding = response.data[0].embedding
+                if len(embedding) != self.dimension:
+                    logger.warning(
+                        "embedding_dimension_mismatch",
+                        extra={
+                            "expected": self.dimension,
+                            "actual": len(embedding),
+                            "model": self.model,
+                        },
+                    )
+                return embedding
+            except Exception as e:
+                logger.warning(
+                    "embedding_api_generation_failed",
+                    extra={"model": self.model, "error": str(e)},
+                )
+
         model = _load_model()
         if model is not None:
             try:

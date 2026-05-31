@@ -21,3 +21,8 @@ Bộ docs này được tạo để định hướng xây dựng dự án TechSh
 4. Build theo order trong `PROJECT.md`.
 5. Dùng `DEPLOYS.md` để chuẩn hóa Docker/deploy.
 
+## Current Runtime Conventions
+
+- Runtime env chỉ dùng một file duy nhất: root `.env`.
+- Gateway public port hiện tại là `1912`.
+- AI runtime dùng OpenAI-compatible API qua `OPENAI_BASE_URL=https://api.yescale.io/v1`.

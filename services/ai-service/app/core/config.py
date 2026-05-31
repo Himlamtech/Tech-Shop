@@ -6,7 +6,8 @@ Uses pydantic-settings for type-safe configuration with validation.
 
 from functools import lru_cache
 
-from pydantic_settings import BaseSettings
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -39,14 +40,15 @@ class Settings(BaseSettings):
 
     # LLM
     llm_provider: str = "openai"
-    llm_api_key: str = ""
-    llm_model: str = "gpt-4o-mini"
-    llm_max_tokens: int = 1024
-    llm_temperature: float = 0.3
+    llm_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+    llm_base_url: str = Field(default="https://api.yescale.io/v1", alias="OPENAI_BASE_URL")
+    llm_model: str = Field(default="gpt-5.4-nano", alias="OPENAI_CHAT_MODEL")
+    llm_max_tokens: int = Field(default=1024, alias="OPENAI_MAX_TOKENS")
+    llm_temperature: float = Field(default=0.7, alias="OPENAI_TEMPERATURE")
 
     # Embedding
-    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
-    embedding_dimension: int = 384
+    embedding_model: str = Field(default="text-embedding-3-small", alias="OPENAI_EMBEDDING_MODEL")
+    embedding_dimension: int = Field(default=1536, alias="EMBEDDING_DIMENSION")
     rag_similarity_threshold: float = 0.5
 
     # ML Model Paths
@@ -64,10 +66,13 @@ class Settings(BaseSettings):
     # CORS
     cors_allowed_origins: str = "http://localhost:3000,http://localhost"
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        populate_by_name=True,
+        extra="ignore",
+    )
 
 
 @lru_cache()

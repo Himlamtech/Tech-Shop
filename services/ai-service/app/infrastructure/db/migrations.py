@@ -8,7 +8,7 @@ Usage:
     python -m app.infrastructure.db.migrations
 
 Tables created:
-    - embedding_documents (with vector(768) column for pgvector)
+    - embedding_documents (with vector column sized from EMBEDDING_DIMENSION)
     - chat_logs
     - user_interactions
     - recommendation_logs
