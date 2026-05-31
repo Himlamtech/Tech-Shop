@@ -7,7 +7,7 @@ Uses hypothesis to verify cart invariants across randomized inputs.
 import uuid
 from unittest.mock import patch
 
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from hypothesis import given, settings
 from hypothesis import strategies as st
 from hypothesis.extra.django import TestCase
@@ -154,7 +154,8 @@ class OneCartPerCustomerPropertyTest(TestCase):
 
         # Attempt to create second cart with same user_id — must fail
         with self.assertRaises(IntegrityError):
-            Cart.objects.create(user_id=user_id)
+            with transaction.atomic():
+                Cart.objects.create(user_id=user_id)
 
     @given(
         user_id_1=st.uuids(),

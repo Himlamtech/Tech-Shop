@@ -6,7 +6,7 @@ Uses hypothesis to verify review uniqueness constraint.
 
 import uuid
 
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 from hypothesis.extra.django import TestCase
@@ -56,12 +56,13 @@ class OneReviewPerCustomerPerProductPropertyTest(TestCase):
 
         # Attempt to create second review for same user+product — must fail
         with self.assertRaises(IntegrityError):
-            Review.objects.create(
-                user_id=user_id,
-                product_id=product_id,
-                rating=rating_2,
-                comment=comment_2,
-            )
+            with transaction.atomic():
+                Review.objects.create(
+                    user_id=user_id,
+                    product_id=product_id,
+                    rating=rating_2,
+                    comment=comment_2,
+                )
 
         # Verify only one review exists
         review_count = Review.objects.filter(

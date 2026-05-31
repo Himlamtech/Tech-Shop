@@ -31,7 +31,7 @@ class ReviewCreateAPITests(TestCase):
 
     def setUp(self):
         self.client = APIClient()
-        self.url = "/api/v1/reviews"
+        self.url = "/api/v1/reviews/"
         self.user_id = str(uuid.uuid4())
         self.product_id = str(uuid.uuid4())
         self.order_id = str(uuid.uuid4())

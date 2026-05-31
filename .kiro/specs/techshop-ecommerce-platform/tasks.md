@@ -96,7 +96,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Handle DummyJSON API unreachable gracefully with error message
     - _Requirements: 4.6, 4.7, 4.8, 24.1, 24.6, 24.7, 24.8_
 
-  - [-]* 3.5 Write unit tests for Catalog Service
+  - [x]* 3.5 Write unit tests for Catalog Service
     - Test model constraints (price range, stock range, slug uniqueness, category level enforcement)
     - Test serializer validation (missing fields, invalid ranges, duplicate SKU)
     - Test API endpoints (list, detail, search, filter, sort, pagination, admin CRUD)
@@ -124,7 +124,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
   - Verify product detail page opens, filter by category works
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 5. Phase 2 — Identity Service (Authentication & Authorization)
+- [x] 5. Phase 2 — Identity Service (Authentication & Authorization)
   - [x] 5.1 Implement Identity Service models and migrations
     - Create User model with UUID PK, email (unique, max 254), password_hash, role (admin/staff/customer), is_active, failed_login_attempts, locked_until, timestamps
     - Create RefreshToken model with UUID PK, user FK, token_hash (unique), expires_at, is_revoked, created_at
@@ -148,7 +148,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Allow unauthenticated access to public endpoints (product list, product detail, categories)
     - _Requirements: 3.1, 3.4, 3.5, 3.6, 3.7_
 
-  - [-]* 5.4 Write unit tests for Identity Service
+  - [x]* 5.4 Write unit tests for Identity Service
     - Test registration (success, duplicate email, invalid email, short/long password)
     - Test login (success, wrong password, wrong email, locked account)
     - Test refresh token (success, expired, revoked, invalid)
@@ -181,7 +181,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Return SERVICE_UNAVAILABLE if Catalog Service unreachable
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8_
 
-  - [-]* 6.3 Write unit tests for Cart Service
+  - [x]* 6.3 Write unit tests for Cart Service
     - Test add item (success, out of stock, inactive product, catalog unavailable)
     - Test update quantity (valid, exceeds stock, below 1, above 99)
     - Test remove item
@@ -189,12 +189,12 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Test ServiceClient timeout handling
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8_
 
-  - [-]* 6.4 Write property test for Cart-Product Consistency
+  - [x]* 6.4 Write property test for Cart-Product Consistency
     - **Property 3: Cart-Product Consistency**
     - Verify that CartItem can only reference active, in-stock products at time of addition
     - **Validates: Requirements 7.1, 7.2**
 
-  - [-]* 6.5 Write property test for One Cart Per Customer
+  - [x]* 6.5 Write property test for One Cart Per Customer
     - **Property 4: One Cart Per Customer**
     - Verify unique constraint on Cart.user_id prevents multiple carts per customer
     - **Validates: Requirements 7.8**
@@ -231,7 +231,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Enforce ownership check: customer can only view/cancel own orders
     - _Requirements: 23.2, 23.3, 23.6, 25.4_
 
-  - [-]* 7.4 Write unit tests for Order Service
+  - [x]* 7.4 Write unit tests for Order Service
     - Test checkout (success, empty cart, cart unavailable, product validation failure, non-customer)
     - Test status transitions (valid transitions, invalid transitions, concurrent transition rejection)
     - Test price snapshot immutability
@@ -239,12 +239,12 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Test ownership enforcement
     - _Requirements: 8.1, 8.3, 8.4, 8.7, 8.8, 23.2, 23.4, 23.5_
 
-  - [-]* 7.5 Write property test for Price Snapshot Immutability
+  - [x]* 7.5 Write property test for Price Snapshot Immutability
     - **Property 1: Price Snapshot Immutability**
     - Verify OrderItem unit_price, product_name, product_sku, product_image_url never change after creation
     - **Validates: Requirements 8.2**
 
-  - [-]* 7.6 Write property test for Order Status Transition Validity
+  - [x]* 7.6 Write property test for Order Status Transition Validity
     - **Property 2: Order Status Transition Validity**
     - Verify only allowed transitions succeed; invalid transitions are rejected atomically
     - **Validates: Requirements 23.2, 23.4**
@@ -265,13 +265,13 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Record PaymentStatusHistory for every transition
     - _Requirements: 9.1, 9.2, 9.3, 9.6, 9.7, 9.8_
 
-  - [-]* 8.3 Write unit tests for Payment Service
+  - [x]* 8.3 Write unit tests for Payment Service
     - Test create payment (success, missing fields, idempotency duplicate)
     - Test simulate success/failure transitions
     - Test status history recording
     - _Requirements: 9.1, 9.2, 9.3, 9.6, 9.7, 9.8_
 
-  - [-]* 8.4 Write property test for Payment Idempotency
+  - [x]* 8.4 Write property test for Payment Idempotency
     - **Property 6: Payment Idempotency**
     - Verify duplicate payment requests with same idempotency_key return same result without creating additional transactions
     - **Validates: Requirements 9.6**
@@ -292,13 +292,13 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Reject invalid transitions with VALIDATION_ERROR
     - _Requirements: 10.1, 10.2, 10.3, 10.4, 10.5, 10.7_
 
-  - [-]* 9.3 Write unit tests for Shipping Service
+  - [x]* 9.3 Write unit tests for Shipping Service
     - Test create shipment (success, tracking code generation)
     - Test status transitions (valid forward, invalid backward)
     - Test ownership enforcement
     - _Requirements: 10.2, 10.3, 10.4, 10.5, 10.7_
 
-  - [-]* 9.4 Write property test for Shipment Status Forward-Only
+  - [x]* 9.4 Write property test for Shipment Status Forward-Only
     - **Property 7: Shipment Status Forward-Only**
     - Verify shipment status only transitions forward: processing→shipping→delivered; backward transitions rejected
     - **Validates: Requirements 10.3, 10.5**
@@ -363,7 +363,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Log chat interaction to ChatLog
     - _Requirements: 12.1, 12.2, 12.3, 12.4, 12.5, 12.7, 12.8_
 
-  - [-]* 12.5 Write unit tests for RAG chatbot
+  - [x]* 12.5 Write unit tests for RAG chatbot
     - Test chat endpoint (valid query, empty message, too-long message)
     - Test similarity threshold (no context found scenario)
     - Test product validation (exclude inactive/out-of-stock from recommendations)
@@ -402,7 +402,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Idempotent: skip duplicate records
     - _Requirements: 24.2, 24.6, 24.7, 24.8_
 
-  - [-]* 14.3 Write unit tests for sentiment analysis
+  - [x]* 14.3 Write unit tests for sentiment analysis
     - Test endpoint (valid text, empty text, too-long text)
     - Test model returns valid label and score range
     - Test model_version included in response
@@ -428,7 +428,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Idempotent: skip duplicate records
     - _Requirements: 24.4, 24.6, 24.7, 24.8_
 
-  - [-]* 15.3 Write unit tests for customer segmentation
+  - [x]* 15.3 Write unit tests for customer segmentation
     - Test RFM computation correctness
     - Test cluster count optimization
     - Test insufficient data rejection (<30 customers)
@@ -445,7 +445,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Store results in ProductClassification table
     - _Requirements: 16.1, 16.2, 16.3, 16.4, 16.5_
 
-  - [-]* 16.2 Write unit tests for product classification
+  - [x]* 16.2 Write unit tests for product classification
     - Test classification endpoint (valid product, empty title+description)
     - Test confidence threshold logic (auto-assign vs review_needed)
     - Test model unavailable handling
@@ -470,7 +470,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Idempotent: skip duplicate records
     - _Requirements: 24.3, 24.6, 24.7, 24.8_
 
-  - [-]* 17.3 Write unit tests for sequence recommendation
+  - [x]* 17.3 Write unit tests for sequence recommendation
     - Test with valid interaction sequence (>=2 interactions)
     - Test with insufficient interactions (<2)
     - Test exclusion of inactive/out-of-stock products
@@ -489,7 +489,7 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Log recommendations to RecommendationLog
     - _Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7, 13.8_
 
-  - [-]* 18.2 Write unit tests for hybrid recommendations
+  - [x]* 18.2 Write unit tests for hybrid recommendations
     - Test full hybrid scoring (user with >=3 interactions)
     - Test cold start fallback (<3 interactions)
     - Test budget filtering
@@ -527,13 +527,13 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Handle AI Service unavailable gracefully (store review, mark sentiment_status=pending)
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7_
 
-  - [-]* 20.3 Write unit tests for Review Service
+  - [x]* 20.3 Write unit tests for Review Service
     - Test create review (success, duplicate, unpurchased product, AI unavailable)
     - Test list reviews (pagination, sorting)
     - Test average rating calculation
     - _Requirements: 11.1, 11.2, 11.3, 11.4, 11.5, 11.6, 11.7_
 
-  - [-]* 20.4 Write property test for One Review Per Customer Per Product
+  - [x]* 20.4 Write property test for One Review Per Customer Per Product
     - **Property 5: One Review Per Customer Per Product**
     - Verify unique constraint on (user_id, product_id) prevents duplicate reviews
     - **Validates: Requirements 11.3**
@@ -583,13 +583,13 @@ This implementation plan breaks down the TechShop microservices e-commerce platf
     - Use ServiceClient to call Catalog update endpoint
     - _Requirements: 11.7_
 
-  - [-]* 23.4 Write property test for Database Isolation
+  - [x]* 23.4 Write property test for Database Isolation
     - **Property 8: Database Isolation**
     - Verify no service directly accesses another service's database; all cross-service access via REST
     - Validate Docker network configuration enforces isolation
     - **Validates: Requirements 18.4**
 
-  - [-]* 23.5 Write integration tests for checkout flow
+  - [x]* 23.5 Write integration tests for checkout flow
     - Test full checkout: cart → order → payment → shipping (mock downstream services)
     - Test review with sentiment: review → AI sentiment endpoint
     - Test cart stock validation: cart → catalog product validation
