@@ -18,6 +18,14 @@ from rest_framework.test import APIClient
 from apps.identity.models import RefreshToken, User
 
 
+def _extract_access_token(response):
+    return response.json()["data"]["access_token"]
+
+
+def _extract_refresh_token(response):
+    return response.json()["data"]["refresh_token"]
+
+
 @override_settings(
     DATABASES={
         "default": {
@@ -258,6 +266,84 @@ class RefreshTokenAPITests(TestCase):
         payload = {"refresh_token": raw_token}
         response = self.client.post(self.url, data=payload, format="json")
         self.assertEqual(response.status_code, 200)
+
+
+@override_settings(
+    DATABASES={
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
+    },
+    JWT_ACCESS_TOKEN_LIFETIME_MINUTES=15,
+    JWT_REFRESH_TOKEN_LIFETIME_DAYS=7,
+    JWT_ISSUER="techshop.identity",
+    JWT_ALGORITHM="HS256",
+)
+class SessionAPITests(TestCase):
+    """Tests for current-session and logout endpoints."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create(
+            email="admin@example.com",
+            password_hash=make_password("password123"),
+            role="admin",
+        )
+
+    def _login(self):
+        response = self.client.post(
+            "/api/v1/auth/login",
+            data={"email": "admin@example.com", "password": "password123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        return response
+
+    def test_me_returns_current_user(self):
+        login_response = self._login()
+        access_token = _extract_access_token(login_response)
+
+        response = self.client.get(
+            "/api/v1/auth/me",
+            HTTP_AUTHORIZATION=f"Bearer {access_token}",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["email"], "admin@example.com")
+        self.assertEqual(data["role"], "admin")
+        self.assertTrue(data["is_active"])
+
+    def test_me_requires_authentication(self):
+        response = self.client.get("/api/v1/auth/me")
+        self.assertEqual(response.status_code, 401)
+
+    def test_logout_revokes_refresh_token(self):
+        login_response = self._login()
+        refresh_token = _extract_refresh_token(login_response)
+
+        logout_response = self.client.post(
+            "/api/v1/auth/logout",
+            data={"refresh_token": refresh_token},
+            format="json",
+        )
+        self.assertEqual(logout_response.status_code, 200)
+
+        refresh_response = self.client.post(
+            "/api/v1/auth/refresh",
+            data={"refresh_token": refresh_token},
+            format="json",
+        )
+        self.assertEqual(refresh_response.status_code, 401)
+
+    def test_logout_rejects_unknown_refresh_token(self):
+        response = self.client.post(
+            "/api/v1/auth/logout",
+            data={"refresh_token": "unknown-token"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 401)
         data = response.json()
         self.assertTrue(data["success"])
         self.assertIn("access_token", data["data"])

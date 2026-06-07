@@ -11,10 +11,10 @@ from rest_framework.views import APIView
 
 from apps.core.exceptions import UnauthorizedError
 from apps.core.pagination import StandardPagination
-from apps.core.permissions import IsAdmin
+from apps.core.permissions import IsAdmin, IsAuthenticated
 from apps.core.responses import error_response, success_response
 from apps.identity.models import User
-from apps.identity.serializers import LoginSerializer, RefreshSerializer, RegisterSerializer
+from apps.identity.serializers import LoginSerializer, LogoutSerializer, RefreshSerializer, RegisterSerializer
 from apps.identity.services import AccountLockedError, AuthService
 
 logger = logging.getLogger(__name__)
@@ -124,6 +124,69 @@ class RefreshView(APIView):
             )
 
         return success_response(data=result)
+
+
+class LogoutView(APIView):
+    """
+    POST /api/v1/auth/logout
+
+    Revoke a refresh token to terminate the current session.
+    """
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        serializer = LogoutSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response(
+                code="VALIDATION_ERROR",
+                message="Invalid logout data.",
+                details=_format_serializer_errors(serializer.errors),
+                status=422,
+            )
+
+        try:
+            AuthService.logout(
+                refresh_token_value=serializer.validated_data["refresh_token"],
+            )
+        except UnauthorizedError as e:
+            return error_response(
+                code="UNAUTHORIZED",
+                message=e.message,
+                status=401,
+            )
+
+        return success_response(data={"message": "Logged out successfully."})
+
+
+class MeView(APIView):
+    """
+    GET /api/v1/auth/me
+
+    Return the currently authenticated user's profile from the JWT context.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        try:
+            user = User.objects.get(id=request.user_id, is_active=True)
+        except User.DoesNotExist:
+            return error_response(
+                code="UNAUTHORIZED",
+                message="Authentication credentials were not provided or are invalid",
+                status=401,
+            )
+
+        return success_response(
+            data={
+                "id": str(user.id),
+                "email": user.email,
+                "role": user.role,
+                "is_active": user.is_active,
+            }
+        )
 
 
 def _format_serializer_errors(errors):

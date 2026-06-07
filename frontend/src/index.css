@@ -1,15 +1,15 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --color-editorial-bg: #F4F1EA;
-  --color-editorial-text: #1A1A1A;
-  --color-editorial-accent: #E0D7C6;
-  --color-editorial-card: #E8E5DF;
-  --color-editorial-paper: #FDFDFB;
-  --color-editorial-dark: #2D2D2D;
-  --color-editorial-line: rgba(26, 26, 26, 0.12);
-  --font-serif: "Georgia", "Times New Roman", "Playfair Display", serif;
+  --color-editorial-bg: #f3f7fb;
+  --color-editorial-text: #10233f;
+  --color-editorial-accent: #dbeafe;
+  --color-editorial-card: #e9f1fb;
+  --color-editorial-paper: #ffffff;
+  --color-editorial-dark: #0f172a;
+  --color-editorial-line: rgba(15, 23, 42, 0.1);
+  --font-serif: "Plus Jakarta Sans", "Inter", "Helvetica Neue", sans-serif;
   --font-sans: "Inter", "Helvetica Neue", "Arial", sans-serif;
 }
 
@@ -55,21 +55,28 @@
   height: 5px;
 }
 ::-webkit-scrollbar-track {
-  background: #F4F1EA;
+  background: #f3f7fb;
 }
 ::-webkit-scrollbar-thumb {
-  background: #E0D7C6;
-  border-radius: 0px;
+  background: #c7d9f4;
+  border-radius: 999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #1A1A1A;
+  background: #5b8def;
 }
 
 /* Page global defaults */
 body {
-  background-color: #F4F1EA;
-  color: #1A1A1A;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.14), transparent 28%),
+    radial-gradient(circle at top right, rgba(124, 58, 237, 0.12), transparent 24%),
+    #f3f7fb;
+  color: #10233f;
   font-family: "Inter", "Helvetica Neue", Arial, sans-serif;
   margin: 0;
   padding: 0;
+}
+
+#root {
+  min-height: 100vh;
 }

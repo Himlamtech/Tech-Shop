@@ -179,6 +179,30 @@ class AuthService:
         }
 
     @classmethod
+    def logout(cls, refresh_token_value):
+        """
+        Revoke a refresh token so it can no longer be used.
+
+        Args:
+            refresh_token_value: The raw refresh token string.
+
+        Raises:
+            UnauthorizedError: If the refresh token is invalid.
+        """
+        token_hash = cls._hash_token(refresh_token_value)
+
+        try:
+            refresh_token = RefreshToken.objects.get(token_hash=token_hash)
+        except RefreshToken.DoesNotExist:
+            raise UnauthorizedError(message="Invalid refresh token.")
+
+        if not refresh_token.is_revoked:
+            refresh_token.is_revoked = True
+            refresh_token.save(update_fields=["is_revoked"])
+
+        return None
+
+    @classmethod
     def _generate_tokens(cls, user):
         """
         Generate JWT access token and refresh token for a user.

@@ -49,6 +49,12 @@ class RefreshSerializer(serializers.Serializer):
     refresh_token = serializers.CharField()
 
 
+class LogoutSerializer(serializers.Serializer):
+    """Validates logout input."""
+
+    refresh_token = serializers.CharField()
+
+
 class UserResponseSerializer(serializers.Serializer):
     """Serializes user data for token responses."""
 
