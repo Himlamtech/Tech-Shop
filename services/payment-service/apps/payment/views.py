@@ -55,7 +55,7 @@ class PaymentSimulateSuccessView(APIView):
     Transitions a pending payment to success and records status history.
     """
 
-    permission_classes = []
+    permission_classes = [IsAdmin]
 
     def post(self, request, pk):
         payment_transaction = PaymentService.simulate_success(transaction_id=pk)
@@ -73,7 +73,7 @@ class PaymentSimulateFailureView(APIView):
     Transitions a pending payment to failed and records status history.
     """
 
-    permission_classes = []
+    permission_classes = [IsAdmin]
 
     def post(self, request, pk):
         payment_transaction = PaymentService.simulate_failure(transaction_id=pk)

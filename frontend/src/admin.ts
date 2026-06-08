@@ -1,4 +1,5 @@
 import { authorizedFetch } from "./auth";
+import { parseApiResponse } from "./api";
 import {
   AdminDashboardData,
   AdminPaymentRecord,
@@ -12,22 +13,6 @@ const ADMIN_BASE_URL = import.meta.env.VITE_ADMIN_BASE_URL || "/api/admin";
 const PAYMENT_BASE_URL = import.meta.env.VITE_PAYMENT_BASE_URL || "/api/payments";
 const REVIEW_BASE_URL = import.meta.env.VITE_REVIEW_BASE_URL || "/api/reviews";
 
-interface ApiEnvelope<T> {
-  success: boolean;
-  data: T;
-  error?: {
-    message?: string;
-  };
-}
-
-async function parseResponse<T>(response: Response): Promise<T> {
-  const payload = (await response.json()) as ApiEnvelope<T>;
-  if (!response.ok || !payload.success) {
-    throw new Error(payload.error?.message || "Admin request failed.");
-  }
-  return payload.data;
-}
-
 export async function fetchAdminDashboard(
   tokens: AuthTokens | null,
   onSessionRefresh: (session: AuthSession | null) => void,
@@ -38,7 +23,7 @@ export async function fetchAdminDashboard(
     tokens,
     onSessionRefresh,
   );
-  return parseResponse<AdminDashboardData>(response);
+  return (await parseApiResponse<AdminDashboardData>(response)).data;
 }
 
 export async function fetchAdminUsers(
@@ -51,7 +36,7 @@ export async function fetchAdminUsers(
     tokens,
     onSessionRefresh,
   );
-  return parseResponse<AdminUserRecord[]>(response);
+  return (await parseApiResponse<AdminUserRecord[]>(response)).data;
 }
 
 export async function fetchAdminPayments(
@@ -64,7 +49,7 @@ export async function fetchAdminPayments(
     tokens,
     onSessionRefresh,
   );
-  return parseResponse<AdminPaymentRecord[]>(response);
+  return (await parseApiResponse<AdminPaymentRecord[]>(response)).data;
 }
 
 export async function fetchAdminReviews(
@@ -77,7 +62,7 @@ export async function fetchAdminReviews(
     tokens,
     onSessionRefresh,
   );
-  return parseResponse<AdminReviewRecord[]>(response);
+  return (await parseApiResponse<AdminReviewRecord[]>(response)).data;
 }
 
 export async function updateAdminUser(
@@ -96,7 +81,21 @@ export async function updateAdminUser(
     tokens,
     onSessionRefresh,
   );
-  return parseResponse<AdminUserRecord>(response);
+  return (await parseApiResponse<AdminUserRecord>(response)).data;
+}
+
+export async function fetchAdminUserDetail(
+  userId: string,
+  tokens: AuthTokens | null,
+  onSessionRefresh: (session: AuthSession | null) => void,
+) {
+  const response = await authorizedFetch(
+    `${ADMIN_BASE_URL}/users/${userId}`,
+    {},
+    tokens,
+    onSessionRefresh,
+  );
+  return (await parseApiResponse<AdminUserRecord>(response)).data;
 }
 
 export async function deleteAdminReview(
@@ -110,5 +109,5 @@ export async function deleteAdminReview(
     tokens,
     onSessionRefresh,
   );
-  return parseResponse<{ deleted: boolean }>(response);
+  return (await parseApiResponse<{ deleted: boolean }>(response)).data;
 }

@@ -15,9 +15,12 @@ interface AdminPanelProps {
   reviews: AdminReviewRecord[];
   loading: boolean;
   error: string | null;
+  selectedUserId: string | null;
   onRefresh: () => void;
+  onSelectUser: (user: AdminUserRecord) => void;
   onToggleUserStatus: (user: AdminUserRecord) => void;
   onClearLockout: (user: AdminUserRecord) => void;
+  onChangeUserRole: (user: AdminUserRecord, role: string) => void;
   onDeleteReview: (review: AdminReviewRecord) => void;
 }
 
@@ -31,6 +34,17 @@ function MetricCard({ label, value, hint }: { label: string; value: string | num
   );
 }
 
+function formatDateTime(value?: string | null) {
+  if (!value) return "n/a";
+  return new Date(value).toLocaleString("en-GB", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function AdminPanel({
   user,
   dashboard,
@@ -39,9 +53,12 @@ export default function AdminPanel({
   reviews,
   loading,
   error,
+  selectedUserId,
   onRefresh,
+  onSelectUser,
   onToggleUserStatus,
   onClearLockout,
+  onChangeUserRole,
   onDeleteReview,
 }: AdminPanelProps) {
   return (
@@ -97,12 +114,38 @@ export default function AdminPanel({
             </div>
             <div className="space-y-3">
               {users.map((record) => (
-                <article key={record.id} className="border border-editorial-text/10 bg-editorial-paper p-4">
+                <article
+                  key={record.id}
+                  className={`border bg-editorial-paper p-4 ${selectedUserId === record.id ? "border-editorial-text" : "border-editorial-text/10"}`}
+                >
                   <p className="text-sm font-semibold text-editorial-dark">{record.email}</p>
                   <p className="mt-1 text-xs uppercase tracking-[0.14em] text-editorial-text/50">{record.role}</p>
                   <p className="mt-2 text-xs text-editorial-text/60">
                     Active: {record.is_active ? "yes" : "no"} | Failed attempts: {record.failed_login_attempts}
                   </p>
+                  <p className="mt-1 text-[11px] text-editorial-text/55">
+                    Locked until: {formatDateTime(record.locked_until)}
+                  </p>
+                  <p className="mt-1 text-[11px] text-editorial-text/55">
+                    Created: {formatDateTime(record.created_at)}
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      onClick={() => onSelectUser(record)}
+                      className="border border-editorial-text/20 px-3 py-2 text-[11px] uppercase tracking-[0.14em]"
+                    >
+                      Inspect
+                    </button>
+                    <select
+                      value={record.role}
+                      onChange={(event) => onChangeUserRole(record, event.target.value)}
+                      className="border border-editorial-text/20 bg-transparent px-3 py-2 text-[11px] uppercase tracking-[0.14em]"
+                    >
+                      <option value="admin">admin</option>
+                      <option value="staff">staff</option>
+                      <option value="customer">customer</option>
+                    </select>
+                  </div>
                   <div className="mt-3 flex gap-2">
                     <button
                       onClick={() => onToggleUserStatus(record)}
@@ -130,6 +173,8 @@ export default function AdminPanel({
                   <p className="text-sm font-semibold text-editorial-dark">{payment.status.toUpperCase()}</p>
                   <p className="mt-1 text-xs text-editorial-text/60">Order {payment.order_id}</p>
                   <p className="mt-2 text-sm text-editorial-dark">{payment.amount}</p>
+                  <p className="mt-1 text-[11px] text-editorial-text/55">Idempotency: {payment.idempotency_key}</p>
+                  <p className="mt-1 text-[11px] text-editorial-text/55">Updated: {formatDateTime(payment.updated_at)}</p>
                 </article>
               ))}
             </div>
@@ -142,10 +187,11 @@ export default function AdminPanel({
                 <article key={review.id} className="border border-editorial-text/10 bg-editorial-paper p-4">
                   <p className="text-sm font-semibold text-editorial-dark">Rating {review.rating}/5</p>
                   <p className="mt-1 line-clamp-3 text-xs leading-5 text-editorial-text/70">{review.comment}</p>
+                  <p className="mt-2 text-[11px] text-editorial-text/55">User {review.user_id.slice(0, 8)} / Product {review.product_id.slice(0, 8)}</p>
                   <div className="mt-3 flex items-center justify-between">
-                    <span className="text-[11px] uppercase tracking-[0.14em] text-editorial-text/50">
+                    <div className="text-[11px] uppercase tracking-[0.14em] text-editorial-text/50">
                       {review.sentiment_label || review.sentiment_status}
-                    </span>
+                    </div>
                     <button
                       onClick={() => onDeleteReview(review)}
                       className="border border-red-300 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-red-700"
@@ -153,6 +199,7 @@ export default function AdminPanel({
                       Delete
                     </button>
                   </div>
+                  <p className="mt-2 text-[11px] text-editorial-text/55">Created: {formatDateTime(review.created_at)}</p>
                 </article>
               ))}
             </div>

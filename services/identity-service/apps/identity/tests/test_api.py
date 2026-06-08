@@ -15,6 +15,7 @@ from django.contrib.auth.hashers import make_password
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
+from apps.core.exceptions import ServiceUnavailableError
 from apps.identity.models import RefreshToken, User
 
 
@@ -509,6 +510,56 @@ class RBACTests(TestCase):
         self.assertIsNone(user.locked_until)
 
     @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    def test_admin_cannot_remove_own_admin_role(self, mock_jwt):
+        admin_id = str(uuid.uuid4())
+
+        def set_admin(request):
+            request.user_id = admin_id
+            request.user_role = "admin"
+
+        mock_jwt.side_effect = set_admin
+
+        user = User.objects.create(
+            id=admin_id,
+            email="self-admin@example.com",
+            password_hash=make_password("adminpass"),
+            role="admin",
+            is_active=True,
+        )
+
+        response = self.client.patch(
+            f"/api/v1/admin/users/{user.id}",
+            data={"role": "staff"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    def test_admin_cannot_deactivate_self(self, mock_jwt):
+        admin_id = str(uuid.uuid4())
+
+        def set_admin(request):
+            request.user_id = admin_id
+            request.user_role = "admin"
+
+        mock_jwt.side_effect = set_admin
+
+        user = User.objects.create(
+            id=admin_id,
+            email="self-disable@example.com",
+            password_hash=make_password("adminpass"),
+            role="admin",
+            is_active=True,
+        )
+
+        response = self.client.patch(
+            f"/api/v1/admin/users/{user.id}",
+            data={"is_active": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 403)
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
     @patch("apps.identity.views.ServiceClient.get")
     def test_admin_dashboard_aggregates_service_stats(self, mock_get, mock_jwt):
         def set_admin(request):
@@ -538,3 +589,31 @@ class RBACTests(TestCase):
         self.assertEqual(data["orders"]["total_orders"], 12)
         self.assertEqual(data["payments"]["total_transactions"], 8)
         self.assertEqual(data["reviews"]["total_reviews"], 5)
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    @patch("apps.identity.views.ServiceClient.get")
+    def test_admin_dashboard_degrades_when_service_unavailable(self, mock_get, mock_jwt):
+        def set_admin(request):
+            request.user_id = str(uuid.uuid4())
+            request.user_role = "admin"
+
+        mock_jwt.side_effect = set_admin
+        User.objects.create(
+            email="admin@example.com",
+            password_hash=make_password("adminpass"),
+            role="admin",
+            is_active=True,
+        )
+
+        mock_get.side_effect = [
+            ServiceUnavailableError("catalog down"),
+            {"data": {"total_orders": 12}},
+            {"data": {"total_transactions": 8}},
+            {"data": {"total_reviews": 5}},
+        ]
+
+        response = self.client.get("/api/v1/admin/dashboard")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["catalog"]["status"], "unavailable")
+        self.assertEqual(data["orders"]["total_orders"], 12)

@@ -6,13 +6,14 @@ Business logic is delegated to AuthService.
 """
 
 import logging
+from datetime import datetime, timezone
 from django.conf import settings
 from django.db.models import Count
 
 from rest_framework.views import APIView
 
 from apps.core.http_client import ServiceClient
-from apps.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
+from apps.core.exceptions import ForbiddenError, NotFoundError, ServiceUnavailableError, UnauthorizedError, ValidationError
 from apps.core.pagination import StandardPagination
 from apps.core.permissions import IsAdmin, IsAuthenticated
 from apps.core.responses import error_response, success_response
@@ -240,16 +241,7 @@ class AdminUsersView(APIView):
         paginator = StandardPagination()
         page = paginator.paginate_queryset(queryset, request)
 
-        users_data = [
-            {
-                "id": str(user.id),
-                "email": user.email,
-                "role": user.role,
-                "is_active": user.is_active,
-                "created_at": user.created_at.isoformat(),
-            }
-            for user in page
-        ]
+        users_data = [_serialize_admin_user(user) for user in page]
 
         return paginator.get_paginated_response(users_data)
 
@@ -273,6 +265,12 @@ class AdminUserDetailView(APIView):
             )
 
         data = serializer.validated_data
+
+        if str(request.user_id) == str(user.id):
+            if data.get("role") and data["role"] != "admin":
+                raise ForbiddenError("Admin users cannot remove their own admin role")
+            if data.get("is_active") is False:
+                raise ForbiddenError("Admin users cannot deactivate their own account")
 
         if "role" in data:
             user.role = data["role"]
@@ -306,17 +304,19 @@ class AdminDashboardView(APIView):
             for item in User.objects.values("role").annotate(count=Count("id")).order_by("role")
         }
 
+        now = datetime.now(timezone.utc)
+
         data = {
             "identity": {
                 "total_users": User.objects.count(),
                 "active_users": User.objects.filter(is_active=True).count(),
-                "locked_users": User.objects.exclude(locked_until=None).count(),
+                "locked_users": User.objects.filter(locked_until__gt=now).count(),
                 "users_by_role": users_by_role,
             },
-            "catalog": catalog_client.get("/api/v1/admin/stats", headers=headers).get("data", {}),
-            "orders": order_client.get("/api/v1/orders/stats", headers=headers).get("data", {}),
-            "payments": payment_client.get("/api/v1/payments/stats/", headers=headers).get("data", {}),
-            "reviews": review_client.get("/api/v1/reviews/admin/stats", headers=headers).get("data", {}),
+            "catalog": _safe_service_data(catalog_client, "/api/v1/admin/stats", headers),
+            "orders": _safe_service_data(order_client, "/api/v1/orders/stats", headers),
+            "payments": _safe_service_data(payment_client, "/api/v1/payments/stats/", headers),
+            "reviews": _safe_service_data(review_client, "/api/v1/reviews/admin/stats", headers),
         }
 
         return success_response(data=data)
@@ -348,3 +348,12 @@ def _forward_headers(request):
     if auth_header:
         headers["Authorization"] = auth_header
     return headers
+
+
+def _safe_service_data(client, path, headers):
+    try:
+        return client.get(path, headers=headers).get("data", {})
+    except ServiceUnavailableError:
+        return {"status": "unavailable"}
+    except Exception:
+        return {"status": "error"}

@@ -1,5 +1,4 @@
-import React, { useState, useEffect } from "react";
-import { PRODUCTS } from "./products";
+import React, { useEffect, useMemo, useState } from "react";
 import Navbar from "./components/Navbar";
 import ProductCard from "./components/ProductCard";
 import ProductDetails from "./components/ProductDetails";
@@ -10,42 +9,58 @@ import Favorites from "./components/Favorites";
 import AuthDialog from "./components/AuthDialog";
 import AdminPanel from "./components/AdminPanel";
 import { authenticate, loadStoredSession, logoutSession, persistSession } from "./auth";
-import { deleteAdminReview, fetchAdminDashboard, fetchAdminPayments, fetchAdminReviews, fetchAdminUsers, updateAdminUser } from "./admin";
-import { AdminDashboardData, AdminPaymentRecord, AdminReviewRecord, AdminUserRecord, AuthSession, Product, CartItem } from "./types";
+import { deleteAdminReview, fetchAdminDashboard, fetchAdminPayments, fetchAdminReviews, fetchAdminUserDetail, fetchAdminUsers, updateAdminUser } from "./admin";
+import { AdminDashboardData, AdminPaymentRecord, AdminReviewRecord, AdminUserRecord, AuthSession, CartItem, CategoryNode, Product } from "./types";
 import { Search, Sparkles, RefreshCw, AlertCircle, LogIn, LogOut } from "lucide-react";
+import { fetchCatalogProducts, fetchCategories, fetchProductDetail } from "./catalog";
+import { addRemoteCartItem, clearRemoteCart, fetchRemoteCart, removeRemoteCartItem, updateRemoteCartItem } from "./cart";
+import { checkoutOrder } from "./orders";
+
+function flattenCategories(categories: CategoryNode[], bag: string[] = []): string[] {
+  categories.forEach((category) => {
+    bag.push(category.name);
+    if (category.children.length > 0) {
+      flattenCategories(category.children, bag);
+    }
+  });
+  return bag;
+}
+
 export default function App() {
   const [activeCategory, setActiveCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [comparedProducts, setComparedProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  
-  // UI drawers open triggers
   const [cartOpen, setCartOpen] = useState(false);
   const [comparisonOpen, setComparisonOpen] = useState(false);
-  const [chatOpen, setChatOpen] = useState(false);
   const [favoritesOpen, setFavoritesOpen] = useState(false);
-
-  // Wishlist/Favorites lists
   const [favorites, setFavorites] = useState<Product[]>([]);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categoriesTree, setCategoriesTree] = useState<CategoryNode[]>([]);
   const [adminLoading, setAdminLoading] = useState(false);
   const [adminError, setAdminError] = useState<string | null>(null);
   const [adminDashboard, setAdminDashboard] = useState<AdminDashboardData | null>(null);
   const [adminUsers, setAdminUsers] = useState<AdminUserRecord[]>([]);
   const [adminPayments, setAdminPayments] = useState<AdminPaymentRecord[]>([]);
   const [adminReviews, setAdminReviews] = useState<AdminReviewRecord[]>([]);
-
-  // AI Semantic search intelligence references
+  const [selectedAdminUserId, setSelectedAdminUserId] = useState<string | null>(null);
   const [aiSearchPrompt, setAiSearchPrompt] = useState("");
   const [aiSearching, setAiSearching] = useState(false);
   const [aiSearchError, setAiSearchError] = useState<string | null>(null);
 
-  // Initialize cart and favorites from localStorage if exists
+  const productLookup = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+  const categories = useMemo(() => ["All", ...Array.from(new Set(flattenCategories(categoriesTree)))], [categoriesTree]);
+  const isAdminWorkspace = authSession?.user.role === "admin";
+  const isCustomerSession = authSession?.user.role === "customer";
+
   useEffect(() => {
     try {
       const storedCart = localStorage.getItem("aether_cart");
@@ -56,8 +71,8 @@ export default function App() {
       if (storedFav) {
         setFavorites(JSON.parse(storedFav));
       }
-    } catch (e) {
-      console.error("Local storage sync bypassed:", e);
+    } catch (error) {
+      console.error("Local storage sync bypassed:", error);
     }
 
     const storedSession = loadStoredSession();
@@ -66,11 +81,40 @@ export default function App() {
     }
   }, []);
 
-  const isAdminWorkspace = authSession?.user.role === "admin" || authSession?.user.role === "staff";
+  useEffect(() => {
+    const bootstrapCatalog = async () => {
+      setCatalogLoading(true);
+      setCatalogError(null);
+      try {
+        const [catalogProducts, categoryData] = await Promise.all([
+          fetchCatalogProducts(),
+          fetchCategories(),
+        ]);
+        setProducts(catalogProducts);
+        setCategoriesTree(categoryData);
+      } catch (error: any) {
+        setCatalogError(error?.message || "Catalog could not be synchronized.");
+      } finally {
+        setCatalogLoading(false);
+      }
+    };
+
+    bootstrapCatalog();
+  }, []);
+
+  useEffect(() => {
+    if (!authSession || authSession.user.role !== "customer" || products.length === 0) {
+      return;
+    }
+
+    fetchRemoteCart(authSession, setAuthSession, productLookup)
+      .then((items) => setCart(items))
+      .catch((error) => console.error("Remote cart sync failed:", error));
+  }, [authSession?.user.id, authSession?.user.role, products.length]);
 
   const syncAdminData = async (sessionOverride?: AuthSession | null) => {
     const session = sessionOverride ?? authSession;
-    if (!session || (session.user.role !== "admin" && session.user.role !== "staff")) {
+    if (!session || session.user.role !== "admin") {
       return;
     }
 
@@ -108,8 +152,12 @@ export default function App() {
       persistSession(session);
       setAuthSession(session);
       setAuthDialogOpen(false);
-      if (session.user.role === "admin" || session.user.role === "staff") {
+      if (session.user.role === "admin") {
         await syncAdminData(session);
+      }
+      if (session.user.role === "customer" && products.length > 0) {
+        const remoteCart = await fetchRemoteCart(session, setAuthSession, productLookup);
+        setCart(remoteCart);
       }
     } catch (error: any) {
       setAuthError(error?.message || "Authentication failed.");
@@ -123,7 +171,7 @@ export default function App() {
       try {
         await logoutSession(authSession.refreshToken);
       } catch {
-        // Swallow logout errors and clear the local session anyway.
+        // Clear local session even if the service already revoked the token.
       }
     }
     persistSession(null);
@@ -136,24 +184,27 @@ export default function App() {
 
   const handleToggleUserStatus = async (user: AdminUserRecord) => {
     if (!authSession) return;
-    await updateAdminUser(
-      user.id,
-      { is_active: !user.is_active },
-      authSession,
-      setAuthSession,
-    );
+    await updateAdminUser(user.id, { is_active: !user.is_active }, authSession, setAuthSession);
     await syncAdminData();
   };
 
   const handleClearLockout = async (user: AdminUserRecord) => {
     if (!authSession) return;
-    await updateAdminUser(
-      user.id,
-      { clear_lockout: true },
-      authSession,
-      setAuthSession,
-    );
+    await updateAdminUser(user.id, { clear_lockout: true }, authSession, setAuthSession);
     await syncAdminData();
+  };
+
+  const handleChangeUserRole = async (user: AdminUserRecord, role: string) => {
+    if (!authSession || role === user.role) return;
+    await updateAdminUser(user.id, { role }, authSession, setAuthSession);
+    await syncAdminData();
+  };
+
+  const handleSelectAdminUser = async (user: AdminUserRecord) => {
+    if (!authSession) return;
+    setSelectedAdminUserId(user.id);
+    const detail = await fetchAdminUserDetail(user.id, authSession, setAuthSession);
+    setAdminUsers((current) => current.map((item) => (item.id === detail.id ? detail : item)));
   };
 
   const handleDeleteReview = async (review: AdminReviewRecord) => {
@@ -162,88 +213,95 @@ export default function App() {
     await syncAdminData();
   };
 
-  // Save cart to local storage on updates
-  const saveCart = (newCart: CartItem[]) => {
-    setCart(newCart);
+  const saveLocalCart = (nextCart: CartItem[]) => {
+    setCart(nextCart);
     try {
-      localStorage.setItem("aether_cart", JSON.stringify(newCart));
-    } catch (e) {
-      console.warn("Local storage capacity limit:", e);
+      localStorage.setItem("aether_cart", JSON.stringify(nextCart));
+    } catch (error) {
+      console.warn("Local storage capacity limit:", error);
     }
   };
 
-  const handleAddToCart = (product: Product) => {
+  const handleAddToCart = async (product: Product) => {
+    if (isCustomerSession && authSession) {
+      try {
+        const syncedCart = await addRemoteCartItem(product.id, 1, authSession, setAuthSession, productLookup);
+        setCart(syncedCart);
+        setCartOpen(true);
+        return;
+      } catch (error) {
+        setCatalogError(error instanceof Error ? error.message : "Failed to add item to cart.");
+      }
+    }
+
     const existingIdx = cart.findIndex((item) => item.product.id === product.id);
-    let updatedCart: CartItem[] = [];
-
     if (existingIdx > -1) {
-      updatedCart = [...cart];
-      updatedCart[existingIdx].quantity += 1;
+      const updatedCart = [...cart];
+      updatedCart[existingIdx] = { ...updatedCart[existingIdx], quantity: updatedCart[existingIdx].quantity + 1 };
+      saveLocalCart(updatedCart);
     } else {
-      updatedCart = [...cart, { product, quantity: 1 }];
+      saveLocalCart([...cart, { product, quantity: 1 }]);
+    }
+    setCartOpen(true);
+  };
+
+  const handleUpdateQuantity = async (item: CartItem, delta: number) => {
+    if (isCustomerSession && authSession && item.id) {
+      const nextQuantity = Math.max(1, item.quantity + delta);
+      const syncedCart = await updateRemoteCartItem(item.id, nextQuantity, authSession, setAuthSession, productLookup);
+      setCart(syncedCart);
+      return;
     }
 
-    saveCart(updatedCart);
-    setCartOpen(true); // Open drawer on addition
+    const updated = cart.map((cartItem) => {
+      if (cartItem.product.id === item.product.id) {
+        return { ...cartItem, quantity: Math.max(1, cartItem.quantity + delta) };
+      }
+      return cartItem;
+    });
+    saveLocalCart(updated);
   };
 
-  const handleUpdateQuantity = (productId: string, delta: number) => {
-    const updated = cart
-      .map((item) => {
-        if (item.product.id === productId) {
-          return { ...item, quantity: Math.max(1, item.quantity + delta) };
-        }
-        return item;
-      })
-      .filter((item) => item.quantity > 0);
-    saveCart(updated);
+  const handleRemoveItem = async (item: CartItem) => {
+    if (isCustomerSession && authSession && item.id) {
+      const syncedCart = await removeRemoteCartItem(item.id, authSession, setAuthSession, productLookup);
+      setCart(syncedCart);
+      return;
+    }
+
+    saveLocalCart(cart.filter((cartItem) => cartItem.product.id !== item.product.id));
   };
 
-  const handleRemoveItem = (productId: string) => {
-    const updated = cart.filter((item) => item.product.id !== productId);
-    saveCart(updated);
-  };
-
-  const handleClearCart = () => {
-    saveCart([]);
+  const handleClearCart = async () => {
+    if (isCustomerSession && authSession) {
+      const syncedCart = await clearRemoteCart(authSession, setAuthSession, productLookup);
+      setCart(syncedCart);
+      return;
+    }
+    saveLocalCart([]);
   };
 
   const saveFavorites = (newFavorites: Product[]) => {
     setFavorites(newFavorites);
     try {
       localStorage.setItem("aether_favorites", JSON.stringify(newFavorites));
-    } catch (e) {
-      console.warn("Local storage favorites limit:", e);
+    } catch (error) {
+      console.warn("Local storage favorites limit:", error);
     }
   };
 
   const handleToggleFavorite = (product: Product) => {
     const exists = favorites.some((p) => p.id === product.id);
-    let updated: Product[] = [];
-    if (exists) {
-      updated = favorites.filter((p) => p.id !== product.id);
-    } else {
-      updated = [...favorites, product];
-    }
-    saveFavorites(updated);
+    saveFavorites(exists ? favorites.filter((p) => p.id !== product.id) : [...favorites, product]);
   };
 
-  // Toggle products on comparison board (cap at 2 products for high fidelity reports)
   const handleToggleCompare = (product: Product) => {
     setComparedProducts((prev) => {
       const exists = prev.some((p) => p.id === product.id);
-      if (exists) {
-        return prev.filter((p) => p.id !== product.id);
-      } else {
-        if (prev.length >= 2) {
-          // If already 2 products, wrap-around remove first and add new or warn
-          return [prev[1], product];
-        }
-        return [...prev, product];
-      }
+      if (exists) return prev.filter((p) => p.id !== product.id);
+      if (prev.length >= 2) return [prev[1], product];
+      return [...prev, product];
     });
-
-    // Toggle comparison drawer visible so they see their selection
     setComparisonOpen(true);
   };
 
@@ -251,105 +309,78 @@ export default function App() {
     setComparedProducts((prev) => prev.filter((p) => p.id !== product.id));
   };
 
-  // Action semantic search using local or remote Gemini API recommendation!
+  const handleProductSelect = async (product: Product) => {
+    try {
+      const detail = await fetchProductDetail(product.id);
+      setSelectedProduct(detail);
+    } catch {
+      setSelectedProduct(product);
+    }
+  };
+
+  const handleProductRefresh = async (productId: string) => {
+    const detail = await fetchProductDetail(productId);
+    setProducts((current) => current.map((item) => (item.id === detail.id ? { ...item, ...detail } : item)));
+    setSelectedProduct(detail);
+  };
+
+  const handleCheckout = async (shippingAddress: string) => {
+    if (!authSession || authSession.user.role !== "customer") {
+      throw new Error("Please sign in with a customer account to complete checkout.");
+    }
+
+    const order = await checkoutOrder(shippingAddress, authSession, setAuthSession);
+    const emptyCart = await clearRemoteCart(authSession, setAuthSession, productLookup);
+    setCart(emptyCart);
+    return order;
+  };
+
   const handleAISemanticSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    const prompt = aiSearchPrompt.trim();
+    const prompt = aiSearchPrompt.trim().toLowerCase();
     if (!prompt) return;
 
     setAiSearching(true);
     setAiSearchError(null);
 
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          messages: [
-            {
-              sender: "user",
-              text: `Search query: "${prompt}". Match this description to exactly ONE corresponding ID of the stock items listed in catalog. Reply ONLY with the matched product ID lowercase among: ar-spectacles, anc-headphones, titanium-smartwatch, mech-keyboard, smart-projector, ergonomic-trackpad. If absolutely none matches, reply with 'none'. Do not say anything else.`
-            }
-          ]
-        })
+      const matched = products.find((product) => {
+        const corpus = [product.name, product.category, product.description, product.brand, ...product.features]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return prompt.split(/\s+/).some((token) => token.length > 2 && corpus.includes(token));
       });
 
-      const data = await res.json();
-      if (res.ok && data.text) {
-        const cleanedId = data.text.trim().toLowerCase();
-        
-        // Find corresponding product
-        const matched = PRODUCTS.find((p) => cleanedId.includes(p.id) || p.id.includes(cleanedId));
-        if (matched) {
-          setSelectedProduct(matched);
-          setAiSearchPrompt("");
-        } else {
-          setAiSearchError("I couldn't pinpoint a perfect product match for that description. Try asking our floating shopping counselor!");
-        }
-      } else {
-        throw new Error(data.error || "Failed to parse index recommendation");
-      }
-    } catch (err: any) {
-      console.error(err);
-      
-      // Smart local fallback regex lookup for client-side matching if backend or key is offline
-      const lowerPrompt = prompt.toLowerCase();
-      let fallbackProduct: Product | null = null;
-
-      if (lowerPrompt.includes("ar") || lowerPrompt.includes("glass") || lowerPrompt.includes("wearable") || lowerPrompt.includes("lens") || lowerPrompt.includes("translate")) {
-        fallbackProduct = PRODUCTS.find((p) => p.id === "ar-spectacles") || null;
-      } else if (lowerPrompt.includes("headphone") || lowerPrompt.includes("anc") || lowerPrompt.includes("audio") || lowerPrompt.includes("noise") || lowerPrompt.includes("sound")) {
-        fallbackProduct = PRODUCTS.find((p) => p.id === "anc-headphones") || null;
-      } else if (lowerPrompt.includes("watch") || lowerPrompt.includes("chrono") || lowerPrompt.includes("gps") || lowerPrompt.includes("health") || lowerPrompt.includes("pulse")) {
-        fallbackProduct = PRODUCTS.find((p) => p.id === "titanium-smartwatch") || null;
-      } else if (lowerPrompt.includes("key") || lowerPrompt.includes("board") || lowerPrompt.includes("mech") || lowerPrompt.includes("type") || lowerPrompt.includes("switch")) {
-        fallbackProduct = PRODUCTS.find((p) => p.id === "mech-keyboard") || null;
-      } else if (lowerPrompt.includes("projector") || lowerPrompt.includes("beam") || lowerPrompt.includes("aura") || lowerPrompt.includes("wall") || lowerPrompt.includes("laser")) {
-        fallbackProduct = PRODUCTS.find((p) => p.id === "smart-projector") || null;
-      } else if (lowerPrompt.includes("touch") || lowerPrompt.includes("trackpad") || lowerPrompt.includes("pad") || lowerPrompt.includes("wrist") || lowerPrompt.includes("ergonomic")) {
-        fallbackProduct = PRODUCTS.find((p) => p.id === "ergonomic-trackpad") || null;
+      if (!matched) {
+        throw new Error("I couldn't pinpoint a perfect product match for that description.");
       }
 
-      if (fallbackProduct) {
-        setSelectedProduct(fallbackProduct);
-        setAiSearchPrompt("");
-      } else {
-        setAiSearchError("Unable to locate. Try simpler tech queries like 'noise noise cancelling headphones' or 'wrist trackpad'.");
-      }
+      await handleProductSelect(matched);
+      setAiSearchPrompt("");
+    } catch (error: any) {
+      setAiSearchError(error?.message || "Unable to locate a matching product.");
     } finally {
       setAiSearching(false);
     }
   };
 
-  // Filter products by search text and active category
-  const filteredProducts = PRODUCTS.filter((product) => {
+  const filteredProducts = products.filter((product) => {
     const matchesCategory = activeCategory === "All" || product.category === activeCategory;
-    const matchesKeyword =
-      product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      product.category.toLowerCase().includes(searchQuery.toLowerCase());
-
-    return matchesCategory && matchesKeyword;
+    const haystack = [product.name, product.description, product.category, product.brand, ...product.features].join(" ").toLowerCase();
+    return matchesCategory && haystack.includes(searchQuery.toLowerCase());
   });
-
-  const categories = ["All", "Wearables", "Audio", "Peripherals", "Home Tech"];
 
   return (
     <div className="min-h-screen bg-editorial-bg text-editorial-text relative pb-16 selection:bg-editorial-accent selection:text-editorial-dark">
-      
-      {/* Decorative vertical editorial line and header reference */}
       <div className="border-t border-editorial-text/10" />
 
-      {/* Navigation Headers */}
       <Navbar
-        cartCount={cart.reduce((sum, i) => sum + i.quantity, 0)}
+        cartCount={cart.reduce((sum, item) => sum + item.quantity, 0)}
         onCartClick={() => setCartOpen(true)}
         comparedCount={comparedProducts.length}
         onCompareClick={() => setComparisonOpen(true)}
         onAICompanionClick={() => {
-          // Trigger floating assistant open and notify
           const btn = document.getElementById("nav-ai-button");
           if (btn) btn.click();
         }}
@@ -363,18 +394,12 @@ export default function App() {
         </div>
         <div className="flex flex-wrap gap-3">
           {isAdminWorkspace && authSession && (
-            <button
-              onClick={() => syncAdminData()}
-              className="border border-editorial-text/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-editorial-dark"
-            >
+            <button onClick={() => syncAdminData()} className="border border-editorial-text/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-editorial-dark">
               Open Admin Sync
             </button>
           )}
           {authSession ? (
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 border border-editorial-text bg-editorial-text px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-editorial-bg"
-            >
+            <button onClick={handleLogout} className="flex items-center gap-2 border border-editorial-text bg-editorial-text px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-editorial-bg">
               <LogOut className="h-3.5 w-3.5" />
               Sign Out
             </button>
@@ -403,17 +428,17 @@ export default function App() {
           reviews={adminReviews}
           loading={adminLoading}
           error={adminError}
+          selectedUserId={selectedAdminUserId}
           onRefresh={() => syncAdminData()}
+          onSelectUser={handleSelectAdminUser}
           onToggleUserStatus={handleToggleUserStatus}
           onClearLockout={handleClearLockout}
+          onChangeUserRole={handleChangeUserRole}
           onDeleteReview={handleDeleteReview}
         />
       )}
 
-      {/* Main Body Layout */}
       <main className="max-w-7xl mx-auto px-4 md:px-8 py-8 md:py-16 space-y-12">
-        
-        {/* HERO TITLE CONTAINER */}
         <section className="text-center max-w-4xl mx-auto space-y-5 animate-in fade-in slide-in-from-top-3 duration-500 pt-6">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 border border-editorial-text/15 bg-editorial-accent/20 text-editorial-text cap-text select-none">
             <Sparkles className="w-2.5 h-2.5 opacity-70" />
@@ -422,22 +447,16 @@ export default function App() {
 
           <h1 className="serif text-4xl md:text-7xl font-bold text-editorial-text tracking-tighter leading-[0.95] py-2">
             Future Hardware,<br />
-            <span className="serif italic text-editorial-text/75 font-normal">
-              Decided with AI Clarity.
-            </span>
+            <span className="serif italic text-editorial-text/75 font-normal">Decided with AI Clarity.</span>
           </h1>
 
           <p className="text-xs md:text-sm text-editorial-text max-w-[585px] mx-auto leading-relaxed opacity-75 font-sans">
-            An exploration of peak geometric precision and technical ingenuity. Compare premium catalog items side-by-side to authorize custom generative intelligence reviews immediately.
+            Explore the live catalog from the backend, compare hardware side-by-side, and move from discovery to checkout without drifting away from the database truth.
           </p>
         </section>
 
-        {/* INTERACTIVE SEARCH & ADVISORY COMMAND CENTRE */}
         <section className="bg-editorial-paper border border-editorial-text/15 rounded-none p-6 md:p-8 max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300">
-          
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
-            
-            {/* Command 1: Keyword matching search (5/12 cols) */}
             <div className="md:col-span-5 relative">
               <label className="text-[9px] text-editorial-text font-bold uppercase tracking-wider font-mono mb-2 block">Keyword lookup</label>
               <div className="relative">
@@ -452,18 +471,13 @@ export default function App() {
               </div>
             </div>
 
-            {/* Command Divider or Connector */}
-            <div className="hidden md:flex md:col-span-1 pb-3 justify-center text-[10px] font-mono text-editorial-text/50 uppercase tracking-widest font-semibold">
-              /
-            </div>
+            <div className="hidden md:flex md:col-span-1 pb-3 justify-center text-[10px] font-mono text-editorial-text/50 uppercase tracking-widest font-semibold">/</div>
 
-            {/* Command 2: Generative Spec Search bar (6/12 cols) */}
             <form onSubmit={handleAISemanticSearch} className="md:col-span-6 relative font-sans">
               <label className="text-[9px] text-editorial-text font-bold uppercase tracking-wider font-mono mb-2 block flex items-center justify-between">
                 <span>AI Intent Alignment</span>
-                <span className="text-[8px] tracking-normal font-mono opacity-50 font-normal">Cognitive match</span>
+                <span className="text-[8px] tracking-normal font-mono opacity-50 font-normal">Catalog-aware match</span>
               </label>
-
               <div className="relative flex gap-2">
                 <input
                   type="text"
@@ -471,82 +485,53 @@ export default function App() {
                   value={aiSearchPrompt}
                   onChange={(e) => setAiSearchPrompt(e.target.value)}
                   disabled={aiSearching}
-                  placeholder="Describe goal: 'I want wrist relief writing spreadsheet code'..."
+                  placeholder="Describe goal: 'I need a travel audio setup with strong ANC'..."
                   className="flex-grow text-xs bg-editorial-bg border border-editorial-text/25 focus:border-editorial-text focus:outline-none rounded-none pl-3.5 pr-10 py-3 transition-all duration-250 italic text-editorial-text"
                 />
-                
-                <button
-                  type="submit"
-                  disabled={!aiSearchPrompt.trim() || aiSearching}
-                  className="bg-editorial-text text-editorial-bg hover:bg-editorial-accent hover:text-editorial-text border border-editorial-text rounded-none px-4.5 flex items-center justify-center gap-1.5 shrink-0 transition-colors duration-250 disabled:opacity-40"
-                >
-                  {aiSearching ? (
-                    <RefreshCw className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <>
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider font-mono hidden sm:inline">Search AI</span>
-                    </>
-                  )}
+                <button type="submit" disabled={!aiSearchPrompt.trim() || aiSearching} className="bg-editorial-text text-editorial-bg hover:bg-editorial-accent hover:text-editorial-text border border-editorial-text rounded-none px-4.5 flex items-center justify-center gap-1.5 shrink-0 transition-colors duration-250 disabled:opacity-40">
+                  {aiSearching ? <RefreshCw className="w-3 h-3 animate-spin" /> : <><Sparkles className="w-3.5 h-3.5" /><span className="text-[10px] font-bold uppercase tracking-wider font-mono hidden sm:inline">Search AI</span></>}
                 </button>
               </div>
             </form>
-
           </div>
 
-          {/* AI Search Assistant Notifications */}
-          {aiSearchError && (
+          {(aiSearchError || catalogError) && (
             <div className="p-3 bg-red-55/10 border border-red-500/20 text-red-900 text-xs rounded-none flex items-start gap-2.5 animate-in fade-in duration-200 font-mono">
               <AlertCircle className="w-4 h-4 text-red-700 shrink-0 mt-0.5" />
-              <p>{aiSearchError}</p>
+              <p>{aiSearchError || catalogError}</p>
             </div>
           )}
-
         </section>
 
-        {/* MAIN PRODUCT BROWSER GRID */}
         <section className="space-y-8 animate-in fade-in duration-300">
-          
-          {/* Categories Tab selector bar */}
           <div className="flex flex-wrap items-center justify-between gap-4 border-b border-editorial-text/15 pb-5">
             <div className="flex flex-wrap gap-2">
               {categories.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
-                  className={`text-[10px] uppercase tracking-wider py-2 px-4 rounded-none transition-all duration-250 cursor-pointer ${
-                    activeCategory === cat
-                      ? "bg-editorial-text text-editorial-bg font-bold border border-editorial-text"
-                      : "bg-transparent text-editorial-text/60 border border-editorial-text/10 hover:border-editorial-text/50 hover:text-editorial-text"
-                  }`}
+                  className={`text-[10px] uppercase tracking-wider py-2 px-4 rounded-none transition-all duration-250 cursor-pointer ${activeCategory === cat ? "bg-editorial-text text-editorial-bg font-bold border border-editorial-text" : "bg-transparent text-editorial-text/60 border border-editorial-text/10 hover:border-editorial-text/50 hover:text-editorial-text"}`}
                 >
                   {cat}
                 </button>
               ))}
             </div>
-
-            <p className="text-[10px] text-editorial-text/50 font-mono tracking-widest uppercase">
-              Manifest — {filteredProducts.length} curations verified
-            </p>
+            <p className="text-[10px] text-editorial-text/50 font-mono tracking-widest uppercase">Manifest — {filteredProducts.length} curations verified</p>
           </div>
 
-          {/* Catalog grid */}
-          {filteredProducts.length === 0 ? (
+          {catalogLoading ? (
+            <div className="bg-editorial-paper rounded-none border border-editorial-text/15 p-16 text-center space-y-5">
+              <RefreshCw className="w-8 h-8 text-editorial-text/40 mx-auto animate-spin" />
+              <p className="serif text-xl font-bold text-editorial-text">Synchronizing live catalog</p>
+            </div>
+          ) : filteredProducts.length === 0 ? (
             <div className="bg-editorial-paper rounded-none border border-editorial-text/15 p-16 text-center space-y-5">
               <Search className="w-8 h-8 text-editorial-text/30 mx-auto" />
               <div className="space-y-2">
                 <p className="serif text-xl font-bold text-editorial-text">No corresponding devices located</p>
-                <p className="text-xs text-editorial-text/60 max-w-sm mx-auto font-sans leading-relaxed">
-                  We could not pinpoint matching hardware items matching current indexing keywords in this collection.
-                </p>
+                <p className="text-xs text-editorial-text/60 max-w-sm mx-auto font-sans leading-relaxed">We could not pinpoint matching hardware items matching current indexing keywords in this collection.</p>
               </div>
-              <button
-                onClick={() => {
-                  setSearchQuery("");
-                  setActiveCategory("All");
-                }}
-                className="text-[10px] uppercase tracking-widest font-bold bg-editorial-text text-editorial-bg px-5 py-2.5 rounded-none border border-editorial-text hover:bg-transparent hover:text-editorial-text transition-colors duration-250 cursor-pointer"
-              >
+              <button onClick={() => { setSearchQuery(""); setActiveCategory("All"); }} className="text-[10px] uppercase tracking-widest font-bold bg-editorial-text text-editorial-bg px-5 py-2.5 rounded-none border border-editorial-text hover:bg-transparent hover:text-editorial-text transition-colors duration-250 cursor-pointer">
                 Reset Layout filters
               </button>
             </div>
@@ -556,7 +541,7 @@ export default function App() {
                 <ProductCard
                   key={product.id}
                   product={product}
-                  onViewDetails={setSelectedProduct}
+                  onViewDetails={handleProductSelect}
                   onAddToCart={handleAddToCart}
                   isCompared={comparedProducts.some((p) => p.id === product.id)}
                   onToggleCompare={handleToggleCompare}
@@ -566,14 +551,9 @@ export default function App() {
               ))}
             </div>
           )}
-
         </section>
-
       </main>
 
-      {/* POPUP DRAWERS & MODALS OUTSIDE WORKSPACE */}
-
-      {/* Shopping Basket Drawer */}
       {cartOpen && (
         <Cart
           items={cart}
@@ -581,10 +561,11 @@ export default function App() {
           onRemoveItem={handleRemoveItem}
           onClose={() => setCartOpen(false)}
           onClearCart={handleClearCart}
+          onCheckout={handleCheckout}
+          requiresSignIn={!isCustomerSession}
         />
       )}
 
-      {/* Specifications Details Modal */}
       {selectedProduct && (
         <ProductDetails
           product={selectedProduct}
@@ -592,56 +573,33 @@ export default function App() {
           onAddToCart={handleAddToCart}
           isFavorite={favorites.some((p) => p.id === selectedProduct.id)}
           onToggleFavorite={handleToggleFavorite}
+          authSession={authSession}
+          onProductRefresh={handleProductRefresh}
         />
       )}
 
-      {/* Wishlist / Saved Items Drawer */}
       {favoritesOpen && (
-        <Favorites
-          items={favorites}
-          onRemoveFavorite={handleToggleFavorite}
-          onAddToCart={(p) => {
-            handleAddToCart(p);
-          }}
-          onClose={() => setFavoritesOpen(false)}
-        />
+        <Favorites items={favorites} onRemoveFavorite={handleToggleFavorite} onAddToCart={handleAddToCart} onClose={() => setFavoritesOpen(false)} />
       )}
 
-      {/* Spec Comparisons matrix Modal */}
       {comparisonOpen && (
         <ComparisonModal
           products={comparedProducts}
           onRemove={handleRemoveCompare}
           onClose={() => setComparisonOpen(false)}
-          allProducts={PRODUCTS}
-          onSelectProduct={(p) => {
-            setComparedProducts((prev) => [...prev, p]);
-          }}
+          allProducts={products}
+          onSelectProduct={(product) => setComparedProducts((prev) => [...prev, product])}
         />
       )}
 
-      {/* FLOATING GENERAL CHATBOT COMPANION (AI expert, synced to catalogue lists) */}
-      <AIChatBot
-        products={PRODUCTS}
-        selectedProductId={selectedProduct?.id}
-      />
+      <AIChatBot products={products} selectedProductId={selectedProduct?.id} />
 
-      <AuthDialog
-        open={authDialogOpen}
-        mode={authMode}
-        busy={authBusy}
-        error={authError}
-        onClose={() => setAuthDialogOpen(false)}
-        onSubmit={handleAuthSubmit}
-        onModeChange={setAuthMode}
-      />
+      <AuthDialog open={authDialogOpen} mode={authMode} busy={authBusy} error={authError} onClose={() => setAuthDialogOpen(false)} onSubmit={handleAuthSubmit} onModeChange={setAuthMode} />
 
-      {/* Continuous footer status */}
       <footer className="border-t border-editorial-text/15 py-8 text-center text-[9px] text-editorial-text/45 font-mono tracking-widest uppercase mt-16 space-y-2 max-w-5xl mx-auto">
         <div>THE ARCHIVE — CURATED INTELLECTUAL HARDWARE FOR CONTEMPORARY DESIGNS</div>
         <div className="opacity-60 text-[8px]">SERIES 2026 © ALL SPECULATIONS AUTHORIZED UNDER DISTRIBUTED CREDENTIALS</div>
       </footer>
-
     </div>
   );
 }

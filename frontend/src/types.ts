@@ -4,6 +4,9 @@ export interface Review {
   rating: number;
   text: string;
   date: string;
+  userId?: string;
+  sentimentLabel?: string | null;
+  sentimentStatus?: string;
 }
 
 export interface Spec {
@@ -16,6 +19,7 @@ export interface Product {
   name: string;
   price: number;
   category: string;
+  categorySlug?: string;
   rating: number;
   reviewsCount: number;
   description: string;
@@ -25,11 +29,22 @@ export interface Product {
   specs: Spec[];
   reviews: Review[];
   aiOverview: string;
+  sku?: string;
+  slug?: string;
+  stock?: number;
+  brand?: string;
+  status?: string;
+  images?: string[];
+  rawAttributes?: Record<string, unknown> | null;
 }
 
 export interface CartItem {
+  id?: string;
+  productId?: string;
   product: Product;
   quantity: number;
+  lineTotal?: number;
+  synced?: boolean;
 }
 
 export interface Message {
@@ -53,6 +68,16 @@ export interface AuthTokens {
 
 export interface AuthSession extends AuthTokens {
   user: AuthUser;
+}
+
+export interface CategoryNode {
+  id: string;
+  name: string;
+  slug: string;
+  parent_id: string | null;
+  is_active: boolean;
+  level: number;
+  children: CategoryNode[];
 }
 
 export interface AdminDashboardData {
@@ -93,7 +118,7 @@ export interface AdminUserRecord {
   failed_login_attempts: number;
   locked_until: string | null;
   created_at: string;
-  updated_at: string;
+  updated_at?: string;
 }
 
 export interface AdminPaymentRecord {
