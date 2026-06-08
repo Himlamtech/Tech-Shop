@@ -507,3 +507,34 @@ class RBACTests(TestCase):
         user.refresh_from_db()
         self.assertEqual(user.failed_login_attempts, 0)
         self.assertIsNone(user.locked_until)
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    @patch("apps.identity.views.ServiceClient.get")
+    def test_admin_dashboard_aggregates_service_stats(self, mock_get, mock_jwt):
+        def set_admin(request):
+            request.user_id = str(uuid.uuid4())
+            request.user_role = "admin"
+
+        mock_jwt.side_effect = set_admin
+        User.objects.create(
+            email="admin@example.com",
+            password_hash=make_password("adminpass"),
+            role="admin",
+            is_active=True,
+        )
+
+        mock_get.side_effect = [
+            {"data": {"total_products": 10, "active_products": 9, "total_categories": 3, "products_by_category": []}},
+            {"data": {"total_orders": 12, "orders_by_status": {"completed": 7}, "total_revenue": "199.50"}},
+            {"data": {"total_transactions": 8, "total_amount": "220.00", "successful_amount": "180.00", "transactions_by_status": {"success": 6}}},
+            {"data": {"total_reviews": 5, "average_rating": 4.2, "reviews_by_sentiment": {"positive": 4}}},
+        ]
+
+        response = self.client.get("/api/v1/admin/dashboard")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["identity"]["total_users"], 1)
+        self.assertEqual(data["catalog"]["total_products"], 10)
+        self.assertEqual(data["orders"]["total_orders"], 12)
+        self.assertEqual(data["payments"]["total_transactions"], 8)
+        self.assertEqual(data["reviews"]["total_reviews"], 5)

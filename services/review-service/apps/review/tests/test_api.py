@@ -258,6 +258,24 @@ class ReviewAverageRatingTests(TestCase):
 
     def test_average_rating_calculation(self):
         """Average rating should be correctly calculated."""
+        Review.objects.create(
+            user_id=uuid.uuid4(),
+            product_id=self.product_id,
+            rating=4,
+            comment="Good",
+        )
+        Review.objects.create(
+            user_id=uuid.uuid4(),
+            product_id=self.product_id,
+            rating=2,
+            comment="Okay",
+        )
+
+        response = self.client.get(f"/api/v1/reviews/product/{self.product_id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["data"]["average_rating"], 3.0)
+
+    def test_average_rating_multiple_reviews(self):
         ratings = [5, 4, 3, 4, 4]
         for i, rating in enumerate(ratings):
             Review.objects.create(
@@ -267,21 +285,78 @@ class ReviewAverageRatingTests(TestCase):
                 comment=f"Review {i}",
             )
 
-        url = f"/api/v1/reviews/product/{self.product_id}"
-        response = self.client.get(url)
+        response = self.client.get(f"/api/v1/reviews/product/{self.product_id}")
         data = response.json()
-        # Average of [5, 4, 3, 4, 4] = 4.0
         self.assertEqual(data["data"]["average_rating"], 4.0)
         self.assertEqual(data["data"]["total_reviews"], 5)
 
     def test_average_rating_no_reviews(self):
         """Product with no reviews should have 0.0 average."""
         empty_product_id = str(uuid.uuid4())
-        url = f"/api/v1/reviews/product/{empty_product_id}"
-        response = self.client.get(url)
+        response = self.client.get(f"/api/v1/reviews/product/{empty_product_id}")
         data = response.json()
         self.assertEqual(data["data"]["average_rating"], 0.0)
         self.assertEqual(data["data"]["total_reviews"], 0)
+
+
+@override_settings(
+    DATABASES={
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
+    },
+    ORDER_SERVICE_URL="http://order-service:8004",
+    AI_SERVICE_URL="http://ai-service:8010",
+    CATALOG_SERVICE_URL="http://catalog-service:8002",
+)
+class ReviewAdminAPITests(TestCase):
+    """Tests for admin review management endpoints."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.product_id = uuid.uuid4()
+        self.review = Review.objects.create(
+            user_id=uuid.uuid4(),
+            product_id=self.product_id,
+            rating=4,
+            comment="Solid product",
+            sentiment_label="positive",
+            sentiment_status="completed",
+        )
+
+    def _mock_admin(self, mock_jwt):
+        def set_admin(request):
+            request.user_id = str(uuid.uuid4())
+            request.user_role = "admin"
+
+        mock_jwt.side_effect = set_admin
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    def test_admin_can_list_reviews(self, mock_jwt):
+        self._mock_admin(mock_jwt)
+
+        response = self.client.get("/api/v1/reviews/admin/list")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()["data"]), 1)
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    def test_admin_can_view_review_stats(self, mock_jwt):
+        self._mock_admin(mock_jwt)
+
+        response = self.client.get("/api/v1/reviews/admin/stats")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["total_reviews"], 1)
+        self.assertEqual(data["reviews_by_sentiment"]["positive"], 1)
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    def test_admin_can_delete_review(self, mock_jwt):
+        self._mock_admin(mock_jwt)
+
+        response = self.client.delete(f"/api/v1/reviews/admin/{self.review.id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Review.objects.filter(id=self.review.id).exists())
 
     def test_average_rating_single_review(self):
         """Single review should have that rating as average."""

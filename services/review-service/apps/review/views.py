@@ -109,6 +109,16 @@ class ProductReviewsView(APIView):
 
         return success_response(response_data, meta=meta)
 
+    def _get_positive_int(self, value, default=1):
+        """Parse a positive integer from query param, returning default if invalid."""
+        if value is None:
+            return default
+        try:
+            val = int(value)
+            return val if val > 0 else default
+        except (ValueError, TypeError):
+            return default
+
 
 class AdminReviewListView(APIView):
     """GET /api/v1/reviews/admin/list — Admin review list with filters."""
@@ -120,15 +130,12 @@ class AdminReviewListView(APIView):
 
         sentiment_status = request.query_params.get("sentiment_status")
         sentiment_label = request.query_params.get("sentiment_label")
-        hidden = request.query_params.get("is_hidden")
         product_id = request.query_params.get("product_id")
 
         if sentiment_status in {"pending", "completed"}:
             queryset = queryset.filter(sentiment_status=sentiment_status)
         if sentiment_label:
             queryset = queryset.filter(sentiment_label=sentiment_label)
-        if hidden in {"true", "false"}:
-            queryset = queryset.filter(is_hidden=(hidden == "true"))
         if product_id:
             queryset = queryset.filter(product_id=product_id)
 
@@ -180,16 +187,6 @@ class AdminReviewStatsView(APIView):
         }
         output = ReviewStatsSerializer(data).data
         return success_response(output)
-
-    def _get_positive_int(self, value, default=1):
-        """Parse a positive integer from query param, returning default if invalid."""
-        if value is None:
-            return default
-        try:
-            val = int(value)
-            return val if val > 0 else default
-        except (ValueError, TypeError):
-            return default
 
 
 # =============================================================================

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { PRODUCTS } from "./products";
-import { Product, CartItem } from "./types";
 import Navbar from "./components/Navbar";
 import ProductCard from "./components/ProductCard";
 import ProductDetails from "./components/ProductDetails";
@@ -8,8 +7,12 @@ import ComparisonModal from "./components/ComparisonModal";
 import AIChatBot from "./components/AIChatBot";
 import Cart from "./components/Cart";
 import Favorites from "./components/Favorites";
-import { Search, Sparkles, Scale, ShoppingBag, ShieldCheck, RefreshCw, AlertCircle, HelpCircle } from "lucide-react";
-
+import AuthDialog from "./components/AuthDialog";
+import AdminPanel from "./components/AdminPanel";
+import { authenticate, loadStoredSession, logoutSession, persistSession } from "./auth";
+import { deleteAdminReview, fetchAdminDashboard, fetchAdminPayments, fetchAdminReviews, fetchAdminUsers, updateAdminUser } from "./admin";
+import { AdminDashboardData, AdminPaymentRecord, AdminReviewRecord, AdminUserRecord, AuthSession, Product, CartItem } from "./types";
+import { Search, Sparkles, RefreshCw, AlertCircle, LogIn, LogOut } from "lucide-react";
 export default function App() {
   const [activeCategory, setActiveCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
@@ -25,6 +28,17 @@ export default function App() {
 
   // Wishlist/Favorites lists
   const [favorites, setFavorites] = useState<Product[]>([]);
+  const [authSession, setAuthSession] = useState<AuthSession | null>(null);
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState<string | null>(null);
+  const [adminDashboard, setAdminDashboard] = useState<AdminDashboardData | null>(null);
+  const [adminUsers, setAdminUsers] = useState<AdminUserRecord[]>([]);
+  const [adminPayments, setAdminPayments] = useState<AdminPaymentRecord[]>([]);
+  const [adminReviews, setAdminReviews] = useState<AdminReviewRecord[]>([]);
 
   // AI Semantic search intelligence references
   const [aiSearchPrompt, setAiSearchPrompt] = useState("");
@@ -45,7 +59,108 @@ export default function App() {
     } catch (e) {
       console.error("Local storage sync bypassed:", e);
     }
+
+    const storedSession = loadStoredSession();
+    if (storedSession) {
+      setAuthSession(storedSession);
+    }
   }, []);
+
+  const isAdminWorkspace = authSession?.user.role === "admin" || authSession?.user.role === "staff";
+
+  const syncAdminData = async (sessionOverride?: AuthSession | null) => {
+    const session = sessionOverride ?? authSession;
+    if (!session || (session.user.role !== "admin" && session.user.role !== "staff")) {
+      return;
+    }
+
+    setAdminLoading(true);
+    setAdminError(null);
+    try {
+      const [dashboard, users, payments, reviews] = await Promise.all([
+        fetchAdminDashboard(session, setAuthSession),
+        fetchAdminUsers(session, setAuthSession),
+        fetchAdminPayments(session, setAuthSession),
+        fetchAdminReviews(session, setAuthSession),
+      ]);
+      setAdminDashboard(dashboard);
+      setAdminUsers(users);
+      setAdminPayments(payments);
+      setAdminReviews(reviews);
+    } catch (error: any) {
+      setAdminError(error?.message || "Admin workspace could not be synchronized.");
+    } finally {
+      setAdminLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAdminWorkspace) {
+      syncAdminData();
+    }
+  }, [authSession?.user.id, authSession?.user.role]);
+
+  const handleAuthSubmit = async (values: { email: string; password: string }) => {
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      const session = await authenticate(authMode, values);
+      persistSession(session);
+      setAuthSession(session);
+      setAuthDialogOpen(false);
+      if (session.user.role === "admin" || session.user.role === "staff") {
+        await syncAdminData(session);
+      }
+    } catch (error: any) {
+      setAuthError(error?.message || "Authentication failed.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    if (authSession?.refreshToken) {
+      try {
+        await logoutSession(authSession.refreshToken);
+      } catch {
+        // Swallow logout errors and clear the local session anyway.
+      }
+    }
+    persistSession(null);
+    setAuthSession(null);
+    setAdminDashboard(null);
+    setAdminUsers([]);
+    setAdminPayments([]);
+    setAdminReviews([]);
+  };
+
+  const handleToggleUserStatus = async (user: AdminUserRecord) => {
+    if (!authSession) return;
+    await updateAdminUser(
+      user.id,
+      { is_active: !user.is_active },
+      authSession,
+      setAuthSession,
+    );
+    await syncAdminData();
+  };
+
+  const handleClearLockout = async (user: AdminUserRecord) => {
+    if (!authSession) return;
+    await updateAdminUser(
+      user.id,
+      { clear_lockout: true },
+      authSession,
+      setAuthSession,
+    );
+    await syncAdminData();
+  };
+
+  const handleDeleteReview = async (review: AdminReviewRecord) => {
+    if (!authSession) return;
+    await deleteAdminReview(review.id, authSession, setAuthSession);
+    await syncAdminData();
+  };
 
   // Save cart to local storage on updates
   const saveCart = (newCart: CartItem[]) => {
@@ -241,6 +356,59 @@ export default function App() {
         favoritesCount={favorites.length}
         onFavoritesClick={() => setFavoritesOpen(true)}
       />
+
+      <section className="mx-auto flex max-w-7xl flex-col gap-4 px-4 pt-5 md:flex-row md:items-center md:justify-between md:px-8">
+        <div className="text-xs uppercase tracking-[0.18em] text-editorial-text/55">
+          {authSession ? `Session active: ${authSession.user.email} / ${authSession.user.role}` : "Guest browsing mode"}
+        </div>
+        <div className="flex flex-wrap gap-3">
+          {isAdminWorkspace && authSession && (
+            <button
+              onClick={() => syncAdminData()}
+              className="border border-editorial-text/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-editorial-dark"
+            >
+              Open Admin Sync
+            </button>
+          )}
+          {authSession ? (
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 border border-editorial-text bg-editorial-text px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-editorial-bg"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Sign Out
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                setAuthMode("login");
+                setAuthError(null);
+                setAuthDialogOpen(true);
+              }}
+              className="flex items-center gap-2 border border-editorial-text bg-editorial-text px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-editorial-bg"
+            >
+              <LogIn className="h-3.5 w-3.5" />
+              Sign In
+            </button>
+          )}
+        </div>
+      </section>
+
+      {isAdminWorkspace && authSession && (
+        <AdminPanel
+          user={authSession.user}
+          dashboard={adminDashboard}
+          users={adminUsers}
+          payments={adminPayments}
+          reviews={adminReviews}
+          loading={adminLoading}
+          error={adminError}
+          onRefresh={() => syncAdminData()}
+          onToggleUserStatus={handleToggleUserStatus}
+          onClearLockout={handleClearLockout}
+          onDeleteReview={handleDeleteReview}
+        />
+      )}
 
       {/* Main Body Layout */}
       <main className="max-w-7xl mx-auto px-4 md:px-8 py-8 md:py-16 space-y-12">
@@ -456,6 +624,16 @@ export default function App() {
       <AIChatBot
         products={PRODUCTS}
         selectedProductId={selectedProduct?.id}
+      />
+
+      <AuthDialog
+        open={authDialogOpen}
+        mode={authMode}
+        busy={authBusy}
+        error={authError}
+        onClose={() => setAuthDialogOpen(false)}
+        onSubmit={handleAuthSubmit}
+        onModeChange={setAuthMode}
       />
 
       {/* Continuous footer status */}

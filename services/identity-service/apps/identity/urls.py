@@ -4,6 +4,7 @@ from django.urls import path
 
 from apps.identity.views import (
     AdminUserDetailView,
+    AdminDashboardView,
     AdminUsersView,
     LoginView,
     LogoutView,
@@ -23,6 +24,7 @@ urlpatterns = [
 # Admin endpoints are mounted at the config level under /api/v1/admin/
 admin_urlpatterns = [
     path("", AdminUsersView.as_view(), name="admin-users-root"),
+    path("dashboard", AdminDashboardView.as_view(), name="admin-dashboard"),
     path("users", AdminUsersView.as_view(), name="admin-users"),
     path("users/<uuid:user_id>", AdminUserDetailView.as_view(), name="admin-user-detail"),
 ]

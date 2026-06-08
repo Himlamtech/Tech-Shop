@@ -6,9 +6,12 @@ Business logic is delegated to AuthService.
 """
 
 import logging
+from django.conf import settings
+from django.db.models import Count
 
 from rest_framework.views import APIView
 
+from apps.core.http_client import ServiceClient
 from apps.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
 from apps.core.pagination import StandardPagination
 from apps.core.permissions import IsAdmin, IsAuthenticated
@@ -285,6 +288,40 @@ class AdminUserDetailView(APIView):
         return success_response(data=_serialize_admin_user(user))
 
 
+class AdminDashboardView(APIView):
+    """Aggregate admin dashboard metrics across core services."""
+
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        headers = _forward_headers(request)
+
+        catalog_client = ServiceClient(settings.CATALOG_SERVICE_URL)
+        order_client = ServiceClient(settings.ORDER_SERVICE_URL)
+        payment_client = ServiceClient(settings.PAYMENT_SERVICE_URL)
+        review_client = ServiceClient(settings.REVIEW_SERVICE_URL)
+
+        users_by_role = {
+            item["role"]: item["count"]
+            for item in User.objects.values("role").annotate(count=Count("id")).order_by("role")
+        }
+
+        data = {
+            "identity": {
+                "total_users": User.objects.count(),
+                "active_users": User.objects.filter(is_active=True).count(),
+                "locked_users": User.objects.exclude(locked_until=None).count(),
+                "users_by_role": users_by_role,
+            },
+            "catalog": catalog_client.get("/api/v1/admin/stats", headers=headers).get("data", {}),
+            "orders": order_client.get("/api/v1/orders/stats", headers=headers).get("data", {}),
+            "payments": payment_client.get("/api/v1/payments/stats/", headers=headers).get("data", {}),
+            "reviews": review_client.get("/api/v1/reviews/admin/stats", headers=headers).get("data", {}),
+        }
+
+        return success_response(data=data)
+
+
 def _get_user_or_404(user_id):
     try:
         return User.objects.get(id=user_id)
@@ -303,3 +340,11 @@ def _serialize_admin_user(user):
         "created_at": user.created_at.isoformat(),
         "updated_at": user.updated_at.isoformat(),
     }
+
+
+def _forward_headers(request):
+    headers = {}
+    auth_header = request.META.get("HTTP_AUTHORIZATION")
+    if auth_header:
+        headers["Authorization"] = auth_header
+    return headers
