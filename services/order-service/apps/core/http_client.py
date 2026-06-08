@@ -48,6 +48,10 @@ class ServiceClient:
         """Send a PATCH request to the target service."""
         return self._request("PATCH", path, headers=headers, json=json)
 
+    def delete(self, path: str, *, headers: dict | None = None, json: dict | None = None) -> dict:
+        """Send a DELETE request to the target service."""
+        return self._request("DELETE", path, headers=headers, json=json)
+
     def _request(
         self,
         method: str,
@@ -61,7 +65,7 @@ class ServiceClient:
         Execute an HTTP request with timeout, header propagation, and logging.
 
         Args:
-            method: HTTP method (GET, POST, PATCH).
+            method: HTTP method (GET, POST, PATCH, DELETE).
             path: URL path relative to base_url.
             headers: Additional headers to include.
             params: Query parameters.

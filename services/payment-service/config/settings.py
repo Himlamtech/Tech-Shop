@@ -128,6 +128,9 @@ SHIPPING_SERVICE_URL = os.environ.get("SHIPPING_SERVICE_URL", "http://shipping-s
 REVIEW_SERVICE_URL = os.environ.get("REVIEW_SERVICE_URL", "http://review-service:8007")
 AI_SERVICE_URL = os.environ.get("AI_SERVICE_URL", "http://ai-service:8010")
 
+# Payment simulation behavior
+PAYMENT_AUTO_STATUS = os.environ.get("PAYMENT_AUTO_STATUS", "success").lower()
+
 # Logging Configuration
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 

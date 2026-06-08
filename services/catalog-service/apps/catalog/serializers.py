@@ -371,6 +371,7 @@ class ProductFilterSerializer(serializers.Serializer):
     - search: keyword search (min 2 chars)
     - category: category slug filter
     - brand: brand name filter
+    - status: product status filter (active/inactive)
     - min_price: minimum price filter
     - max_price: maximum price filter
     - min_rating: minimum average rating filter
@@ -391,6 +392,11 @@ class ProductFilterSerializer(serializers.Serializer):
     )
     category = serializers.SlugField(max_length=120, required=False)
     brand = serializers.CharField(max_length=100, required=False)
+    status = serializers.ChoiceField(
+        choices=["active", "inactive"],
+        required=False,
+        default="active",
+    )
     min_price = serializers.DecimalField(
         max_digits=12,
         decimal_places=2,

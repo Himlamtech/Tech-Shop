@@ -12,6 +12,9 @@ Endpoints:
 from django.urls import path
 
 from apps.payment.views import (
+    PaymentAdminDetailView,
+    PaymentAdminListView,
+    PaymentAdminStatsView,
     PaymentCreateView,
     PaymentSimulateFailureView,
     PaymentSimulateSuccessView,
@@ -19,6 +22,9 @@ from apps.payment.views import (
 
 urlpatterns = [
     path("payments/", PaymentCreateView.as_view(), name="payment-create"),
+    path("payments/admin/list/", PaymentAdminListView.as_view(), name="payment-admin-list"),
+    path("payments/stats/", PaymentAdminStatsView.as_view(), name="payment-admin-stats"),
+    path("payments/<uuid:pk>/", PaymentAdminDetailView.as_view(), name="payment-admin-detail"),
     path(
         "payments/<uuid:pk>/simulate-success/",
         PaymentSimulateSuccessView.as_view(),

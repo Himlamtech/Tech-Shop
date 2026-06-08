@@ -35,3 +35,11 @@ class ProductReviewsOutputSerializer(serializers.Serializer):
     average_rating = serializers.FloatField()
     total_reviews = serializers.IntegerField()
     reviews = ReviewOutputSerializer(many=True)
+
+
+class ReviewStatsSerializer(serializers.Serializer):
+    """Output representation for admin review statistics."""
+
+    total_reviews = serializers.IntegerField()
+    average_rating = serializers.FloatField()
+    reviews_by_sentiment = serializers.DictField(child=serializers.IntegerField())

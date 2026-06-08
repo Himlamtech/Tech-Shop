@@ -352,3 +352,72 @@ class OrderOwnershipTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.order.refresh_from_db()
         self.assertEqual(self.order.status, "cancelled")
+
+
+@override_settings(
+    DATABASES={
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
+    },
+)
+class OrderCompletionAPITests(TestCase):
+    """Tests for PATCH /api/v1/orders/{id}/complete endpoint."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.customer_id = str(uuid.uuid4())
+        self.order = Order.objects.create(
+            user_id=self.customer_id,
+            status="shipping",
+            subtotal=Decimal("100.00"),
+            shipping_fee=Decimal("0.00"),
+            discount_amount=Decimal("0.00"),
+            total_amount=Decimal("100.00"),
+            shipping_address="123 Test St",
+        )
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    def test_customer_can_complete_own_shipping_order(self, mock_jwt):
+        def set_customer(request):
+            request.user_id = self.customer_id
+            request.user_role = "customer"
+
+        mock_jwt.side_effect = set_customer
+
+        response = self.client.patch(f"/api/v1/orders/{self.order.id}/complete")
+        self.assertEqual(response.status_code, 200)
+        self.order.refresh_from_db()
+        self.assertEqual(self.order.status, "completed")
+        self.assertTrue(
+            OrderStatusHistory.objects.filter(
+                order=self.order,
+                from_status="shipping",
+                to_status="completed",
+            ).exists()
+        )
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    def test_customer_cannot_complete_other_users_order(self, mock_jwt):
+        def set_customer(request):
+            request.user_id = str(uuid.uuid4())
+            request.user_role = "customer"
+
+        mock_jwt.side_effect = set_customer
+
+        response = self.client.patch(f"/api/v1/orders/{self.order.id}/complete")
+        self.assertEqual(response.status_code, 403)
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    def test_cannot_complete_non_shipping_order(self, mock_jwt):
+        def set_staff(request):
+            request.user_id = str(uuid.uuid4())
+            request.user_role = "staff"
+
+        mock_jwt.side_effect = set_staff
+        self.order.status = "paid"
+        self.order.save(update_fields=["status"])
+
+        response = self.client.patch(f"/api/v1/orders/{self.order.id}/complete")
+        self.assertEqual(response.status_code, 422)

@@ -200,7 +200,7 @@ class SequenceRecommendationService:
         """
         try:
             response = await self._catalog_client.get_products(
-                params={"page_size": 100, "status": "active"},
+                params={"page_size": 50, "status": "active"},
                 authorization=authorization,
                 request_id=request_id,
             )

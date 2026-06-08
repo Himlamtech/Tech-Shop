@@ -46,3 +46,12 @@ class PaymentTransactionSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
     updated_at = serializers.DateTimeField()
     status_history = PaymentStatusHistorySerializer(many=True, read_only=True)
+
+
+class PaymentStatsSerializer(serializers.Serializer):
+    """Output representation for payment stats used by admin dashboards."""
+
+    total_transactions = serializers.IntegerField()
+    total_amount = serializers.DecimalField(max_digits=14, decimal_places=2)
+    successful_amount = serializers.DecimalField(max_digits=14, decimal_places=2)
+    transactions_by_status = serializers.DictField(child=serializers.IntegerField())

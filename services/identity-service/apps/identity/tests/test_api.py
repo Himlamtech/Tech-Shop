@@ -285,10 +285,24 @@ class SessionAPITests(TestCase):
 
     def setUp(self):
         self.client = APIClient()
+        self.url = "/api/v1/auth/refresh"
         self.user = User.objects.create(
             email="admin@example.com",
             password_hash=make_password("password123"),
             role="admin",
+        )
+
+    def _create_refresh_token(self, raw_token, expired=False, revoked=False):
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+        if expired:
+            expires_at = datetime.now(timezone.utc) - timedelta(days=1)
+
+        return RefreshToken.objects.create(
+            user=self.user,
+            token_hash=token_hash,
+            expires_at=expires_at,
+            is_revoked=revoked,
         )
 
     def _login(self):
@@ -345,9 +359,8 @@ class SessionAPITests(TestCase):
         )
         self.assertEqual(response.status_code, 401)
         data = response.json()
-        self.assertTrue(data["success"])
-        self.assertIn("access_token", data["data"])
-        self.assertIn("refresh_token", data["data"])
+        self.assertFalse(data["success"])
+        self.assertEqual(data["error"]["code"], "UNAUTHORIZED")
 
     def test_refresh_expired_token(self):
         """Expired refresh token should return 401."""
@@ -441,3 +454,56 @@ class RBACTests(TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertTrue(data["success"])
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    def test_admin_can_update_user_role_and_activation(self, mock_jwt):
+        def set_admin(request):
+            request.user_id = str(uuid.uuid4())
+            request.user_role = "admin"
+
+        mock_jwt.side_effect = set_admin
+
+        user = User.objects.create(
+            email="customer@example.com",
+            password_hash=make_password("customerpass"),
+            role="customer",
+            is_active=True,
+        )
+
+        response = self.client.patch(
+            f"/api/v1/admin/users/{user.id}",
+            data={"role": "staff", "is_active": False},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        user.refresh_from_db()
+        self.assertEqual(user.role, "staff")
+        self.assertFalse(user.is_active)
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    def test_admin_can_clear_user_lockout(self, mock_jwt):
+        def set_admin(request):
+            request.user_id = str(uuid.uuid4())
+            request.user_role = "admin"
+
+        mock_jwt.side_effect = set_admin
+
+        user = User.objects.create(
+            email="locked@example.com",
+            password_hash=make_password("lockedpass"),
+            role="customer",
+            failed_login_attempts=5,
+            locked_until=datetime.now(timezone.utc) + timedelta(minutes=10),
+        )
+
+        response = self.client.patch(
+            f"/api/v1/admin/users/{user.id}",
+            data={"clear_lockout": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+
+        user.refresh_from_db()
+        self.assertEqual(user.failed_login_attempts, 0)
+        self.assertIsNone(user.locked_until)

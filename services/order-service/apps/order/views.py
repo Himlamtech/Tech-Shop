@@ -214,6 +214,75 @@ class OrderCancelView(APIView):
         return success_response(serializer.data)
 
 
+class OrderCompleteView(APIView):
+    """
+    PATCH /api/v1/orders/{id}/complete — Mark an order as completed.
+
+    - Customer: can only complete their own order.
+    - Staff/Admin: can complete any order.
+    - Only allowed when current status can transition to `completed`.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, pk):
+        try:
+            order = Order.objects.get(pk=pk)
+        except Order.DoesNotExist:
+            raise NotFoundError("Order not found")
+
+        user_role = getattr(request, "user_role", None)
+        if user_role == "customer" and str(order.user_id) != str(request.user_id):
+            raise ForbiddenError(
+                "You do not have permission to access this resource"
+            )
+
+        allowed_transitions = ORDER_TRANSITIONS.get(order.status, set())
+        if "completed" not in allowed_transitions:
+            raise ValidationError(
+                message=(
+                    f"Cannot complete order in '{order.status}' status. "
+                    f"Allowed transitions from '{order.status}': "
+                    f"{sorted(allowed_transitions) if allowed_transitions else 'none (terminal status)'}"
+                ),
+            )
+
+        from_status = order.status
+        order.status = "completed"
+        order.save(update_fields=["status", "updated_at"])
+
+        OrderStatusHistory.objects.create(
+            order=order,
+            from_status=from_status,
+            to_status="completed",
+            reason="Order marked as completed",
+        )
+
+        order.refresh_from_db()
+        order_data = {
+            "id": order.id,
+            "user_id": order.user_id,
+            "status": order.status,
+            "subtotal": order.subtotal,
+            "shipping_fee": order.shipping_fee,
+            "discount_amount": order.discount_amount,
+            "total_amount": order.total_amount,
+            "shipping_address": order.shipping_address,
+            "items": list(order.items.all().values(
+                "id", "product_id", "product_name", "product_sku",
+                "product_image_url", "unit_price", "quantity", "line_total",
+            )),
+            "status_history": list(order.status_history.all().values(
+                "id", "from_status", "to_status", "reason", "created_at",
+            )),
+            "created_at": order.created_at,
+            "updated_at": order.updated_at,
+        }
+
+        serializer = OrderDetailOutputSerializer(order_data)
+        return success_response(serializer.data)
+
+
 # =============================================================================
 # Admin Views
 # =============================================================================

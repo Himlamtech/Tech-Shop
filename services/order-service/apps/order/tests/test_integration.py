@@ -118,6 +118,8 @@ class CheckoutFlowIntegrationTest(TestCase):
         with patch.object(
             service._cart_client, "get", return_value=self.cart_response
         ), patch.object(
+            service._cart_write_client, "delete", return_value={"data": {"items": []}}
+        ), patch.object(
             service._catalog_client, "post", return_value=self.catalog_response
         ), patch.object(
             service._payment_client, "post", return_value=self.payment_success_response
@@ -129,7 +131,7 @@ class CheckoutFlowIntegrationTest(TestCase):
         # Verify order was created
         self.assertIn("id", result)
         self.assertEqual(result["user_id"], self.user_id)
-        self.assertEqual(result["status"], "paid")
+        self.assertEqual(result["status"], "shipping")
         self.assertEqual(result["shipping_address"], self.shipping_address)
 
         # Verify order items with price snapshots
@@ -162,6 +164,7 @@ class CheckoutFlowIntegrationTest(TestCase):
         self.assertIn((None, "created"), statuses)
         self.assertIn(("created", "payment_pending"), statuses)
         self.assertIn(("payment_pending", "paid"), statuses)
+        self.assertIn(("paid", "shipping"), statuses)
 
     def test_payment_failure_path(self):
         """
@@ -209,6 +212,8 @@ class CheckoutFlowIntegrationTest(TestCase):
         with patch.object(
             service._cart_client, "get", return_value=self.cart_response
         ), patch.object(
+            service._cart_write_client, "delete", return_value={"data": {"items": []}}
+        ), patch.object(
             service._catalog_client, "post", return_value=self.catalog_response
         ), patch.object(
             service._payment_client, "post", return_value=self.payment_success_response
@@ -217,8 +222,8 @@ class CheckoutFlowIntegrationTest(TestCase):
         ):
             result = service.checkout(self.user_id, self.shipping_address)
 
-        # Order should still be paid (shipping failure doesn't revert payment)
-        self.assertEqual(result["status"], "paid")
+        # Order should move to shipping once shipment creation eventually succeeds.
+        self.assertEqual(result["status"], "shipping")
 
         # Verify retry sleep was called with correct interval
         self.assertEqual(mock_sleep.call_count, 2)
@@ -233,6 +238,8 @@ class CheckoutFlowIntegrationTest(TestCase):
 
         with patch.object(
             service._cart_client, "get", return_value=self.cart_response
+        ), patch.object(
+            service._cart_write_client, "delete", return_value={"data": {"items": []}}
         ), patch.object(
             service._catalog_client, "post", return_value=self.catalog_response
         ), patch.object(

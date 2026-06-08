@@ -241,7 +241,7 @@ class CatalogClient:
             headers["X-Request-ID"] = request_id
 
         return await self._client.post(
-            "/api/v1/products/validate-bulk",
+            "/api/v1/products/validate-bulk/",
             headers=headers,
             json={"product_ids": product_ids},
         )
@@ -271,7 +271,7 @@ class CatalogClient:
             headers["X-Request-ID"] = request_id
 
         return await self._client.get(
-            f"/api/v1/products/{product_id}",
+            f"/api/v1/products/{product_id}/",
             headers=headers,
         )
 
@@ -300,7 +300,7 @@ class CatalogClient:
             headers["X-Request-ID"] = request_id
 
         return await self._client.get(
-            "/api/v1/products",
+            "/api/v1/products/",
             headers=headers,
             params=params,
         )

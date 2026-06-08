@@ -36,6 +36,24 @@ class CartDetailView(APIView):
         return success_response(serializer.data)
 
 
+class CartClearView(APIView):
+    """
+    DELETE /api/v1/cart/current/items — Remove all items from the current user's cart.
+
+    Used after a successful checkout to avoid stale cart items.
+    """
+
+    permission_classes = [IsCustomer]
+
+    def delete(self, request):
+        service = CartService(
+            authorization_header=request.META.get("HTTP_AUTHORIZATION")
+        )
+        cart_data = service.clear_cart(user_id=request.user_id)
+        serializer = CartOutputSerializer(cart_data)
+        return success_response(serializer.data)
+
+
 class CartItemListView(APIView):
     """
     POST /api/v1/cart/items — Add an item to the cart.

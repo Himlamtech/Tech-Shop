@@ -46,6 +46,9 @@ class OrderService:
         self._shipping_client = ServiceClient(
             settings.SHIPPING_SERVICE_URL, timeout_seconds=5.0
         )
+        self._cart_write_client = ServiceClient(
+            settings.CART_SERVICE_URL, timeout_seconds=5.0
+        )
         self._auth_header = authorization_header
 
     def _get_service_headers(self) -> dict | None:
@@ -126,7 +129,14 @@ class OrderService:
         if payment_status == "success":
             self.transition_status(str(order.id), "paid", reason="Payment successful")
             # Create shipment with retry (3x, 2s interval)
-            self._create_shipment_with_retry(order, shipping_address, headers)
+            shipment_result = self._create_shipment_with_retry(order, shipping_address, headers)
+            if shipment_result is not None:
+                self.transition_status(
+                    str(order.id),
+                    "shipping",
+                    reason="Shipment created successfully",
+                )
+            self._clear_cart_after_success(headers)
         else:
             self.transition_status(
                 str(order.id), "payment_failed", reason="Payment processing failed"
@@ -342,7 +352,7 @@ class OrderService:
         """
         try:
             response = self._payment_client.post(
-                "/api/v1/payments",
+                "/api/v1/payments/",
                 headers=headers,
                 json={
                     "order_id": str(order.id),
@@ -379,7 +389,7 @@ class OrderService:
         for attempt in range(1, max_retries + 1):
             try:
                 response = self._shipping_client.post(
-                    "/api/v1/shipments",
+                    "/api/v1/shipments/",
                     headers=headers,
                     json={
                         "order_id": str(order.id),
@@ -412,6 +422,24 @@ class OrderService:
             extra={"order_id": str(order.id), "max_retries": max_retries},
         )
         return None
+
+    def _clear_cart_after_success(self, headers: dict | None) -> None:
+        """
+        Clear the customer's cart after a successful checkout.
+
+        This is a best-effort operation so a successful order is not rolled back
+        if the cart service becomes unavailable after payment succeeds.
+        """
+        try:
+            self._cart_write_client.delete(
+                "/api/v1/cart/current/items",
+                headers=headers,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Cart clear after checkout failed",
+                extra={"error": str(exc)},
+            )
 
     def _build_order_response(self, order: Order) -> dict:
         """

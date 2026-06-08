@@ -19,6 +19,7 @@ def get_product_list(filters: dict):
             - search: keyword search (partial match on name, description, brand)
             - category: category slug filter
             - brand: brand name filter
+            - status: product lifecycle status
             - min_price: minimum price
             - max_price: maximum price
             - min_rating: minimum average rating
@@ -27,7 +28,11 @@ def get_product_list(filters: dict):
     Returns:
         QuerySet of Product objects with category prefetched.
     """
-    queryset = Product.objects.filter(status="active").select_related("category").prefetch_related("images")
+    queryset = (
+        Product.objects.filter(status=filters.get("status", "active"))
+        .select_related("category")
+        .prefetch_related("images")
+    )
 
     # Keyword search across name, description, brand
     search = filters.get("search")
@@ -193,6 +198,7 @@ def validate_products_bulk(product_ids):
                 "product_id": pid_str,
                 "valid": False,
                 "name": product.name,
+                "sku": product.sku,
                 "price": str(product.price),
                 "stock": product.stock,
                 "image_url": _get_primary_image_url(product),
@@ -203,6 +209,7 @@ def validate_products_bulk(product_ids):
                 "product_id": pid_str,
                 "valid": False,
                 "name": product.name,
+                "sku": product.sku,
                 "price": str(product.price),
                 "stock": product.stock,
                 "image_url": _get_primary_image_url(product),
@@ -213,6 +220,7 @@ def validate_products_bulk(product_ids):
                 "product_id": pid_str,
                 "valid": True,
                 "name": product.name,
+                "sku": product.sku,
                 "price": str(product.price),
                 "stock": product.stock,
                 "image_url": _get_primary_image_url(product),

@@ -21,7 +21,8 @@ from apps.payment.models import PaymentStatusHistory, PaymentTransaction
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": ":memory:",
         }
-    }
+    },
+    PAYMENT_AUTO_STATUS="pending",
 )
 class PaymentCreateAPITests(TestCase):
     """Tests for POST /api/v1/payments/ endpoint."""
@@ -117,7 +118,8 @@ class PaymentCreateAPITests(TestCase):
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": ":memory:",
         }
-    }
+    },
+    PAYMENT_AUTO_STATUS="pending",
 )
 class PaymentSimulateSuccessAPITests(TestCase):
     """Tests for POST /api/v1/payments/{id}/simulate-success/ endpoint."""
@@ -171,7 +173,8 @@ class PaymentSimulateSuccessAPITests(TestCase):
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": ":memory:",
         }
-    }
+    },
+    PAYMENT_AUTO_STATUS="pending",
 )
 class PaymentSimulateFailureAPITests(TestCase):
     """Tests for POST /api/v1/payments/{id}/simulate-failure/ endpoint."""
@@ -218,7 +221,8 @@ class PaymentSimulateFailureAPITests(TestCase):
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": ":memory:",
         }
-    }
+    },
+    PAYMENT_AUTO_STATUS="pending",
 )
 class PaymentStatusHistoryTests(TestCase):
     """Tests for payment status history tracking."""
@@ -254,6 +258,7 @@ class PaymentStatusHistoryTests(TestCase):
         """Payment response should include status_history."""
         payload = {
             "order_id": self.order_id,
+
             "amount": "50.00",
             "idempotency_key": f"history-resp-{uuid.uuid4()}",
         }
@@ -261,3 +266,66 @@ class PaymentStatusHistoryTests(TestCase):
         data = response.json()
         self.assertIn("status_history", data["data"])
         self.assertGreaterEqual(len(data["data"]["status_history"]), 1)
+
+
+@override_settings(
+    DATABASES={
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
+    },
+    PAYMENT_AUTO_STATUS="pending",
+)
+class PaymentAdminAPITests(TestCase):
+    """Tests for admin payment visibility endpoints."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.tx_pending = PaymentTransaction.objects.create(
+            order_id=uuid.uuid4(),
+            amount=Decimal("10.00"),
+            status="pending",
+            idempotency_key=f"pending-{uuid.uuid4()}",
+        )
+        self.tx_success = PaymentTransaction.objects.create(
+            order_id=uuid.uuid4(),
+            amount=Decimal("25.00"),
+            status="success",
+            idempotency_key=f"success-{uuid.uuid4()}",
+        )
+
+    def _mock_admin(self, mock_jwt):
+        def set_admin(request):
+            request.user_id = str(uuid.uuid4())
+            request.user_role = "admin"
+
+        mock_jwt.side_effect = set_admin
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    def test_admin_can_list_payments(self, mock_jwt):
+        self._mock_admin(mock_jwt)
+
+        response = self.client.get("/api/v1/payments/admin/list/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()["data"]), 2)
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    def test_admin_can_filter_payments_by_status(self, mock_jwt):
+        self._mock_admin(mock_jwt)
+
+        response = self.client.get("/api/v1/payments/admin/list/?status=success")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()["data"]), 1)
+        self.assertEqual(response.json()["data"][0]["status"], "success")
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    def test_admin_can_view_payment_stats(self, mock_jwt):
+        self._mock_admin(mock_jwt)
+
+        response = self.client.get("/api/v1/payments/stats/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["total_transactions"], 2)
+        self.assertEqual(data["transactions_by_status"]["pending"], 1)
+        self.assertEqual(data["transactions_by_status"]["success"], 1)

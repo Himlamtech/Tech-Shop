@@ -69,3 +69,34 @@ class TokenResponseSerializer(serializers.Serializer):
     access_token = serializers.CharField()
     refresh_token = serializers.CharField()
     user = UserResponseSerializer()
+
+
+class AdminUserListItemSerializer(serializers.Serializer):
+    """Serializes a user item for admin list/detail endpoints."""
+
+    id = serializers.UUIDField()
+    email = serializers.EmailField()
+    role = serializers.CharField()
+    is_active = serializers.BooleanField()
+    failed_login_attempts = serializers.IntegerField()
+    locked_until = serializers.DateTimeField(allow_null=True)
+    created_at = serializers.DateTimeField()
+    updated_at = serializers.DateTimeField()
+
+
+class AdminUserUpdateSerializer(serializers.Serializer):
+    """Validates admin updates to user role and activation status."""
+
+    role = serializers.ChoiceField(
+        choices=["admin", "staff", "customer"],
+        required=False,
+    )
+    is_active = serializers.BooleanField(required=False)
+    clear_lockout = serializers.BooleanField(required=False)
+
+    def validate(self, attrs):
+        if not attrs:
+            raise serializers.ValidationError(
+                "At least one of role, is_active, or clear_lockout is required."
+            )
+        return attrs

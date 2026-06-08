@@ -2,7 +2,15 @@
 
 from django.urls import path
 
-from apps.identity.views import AdminUsersView, LoginView, LogoutView, MeView, RefreshView, RegisterView
+from apps.identity.views import (
+    AdminUserDetailView,
+    AdminUsersView,
+    LoginView,
+    LogoutView,
+    MeView,
+    RefreshView,
+    RegisterView,
+)
 
 urlpatterns = [
     path("register", RegisterView.as_view(), name="auth-register"),
@@ -14,5 +22,7 @@ urlpatterns = [
 
 # Admin endpoints are mounted at the config level under /api/v1/admin/
 admin_urlpatterns = [
+    path("", AdminUsersView.as_view(), name="admin-users-root"),
     path("users", AdminUsersView.as_view(), name="admin-users"),
+    path("users/<uuid:user_id>", AdminUserDetailView.as_view(), name="admin-user-detail"),
 ]

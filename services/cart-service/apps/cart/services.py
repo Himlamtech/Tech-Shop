@@ -141,6 +141,20 @@ class CartService:
 
         return self.get_cart_detail(user_id)
 
+    def clear_cart(self, user_id: str) -> dict:
+        """
+        Remove all items from the user's cart and return the updated cart.
+
+        Args:
+            user_id: UUID string of the authenticated user.
+
+        Returns:
+            Empty cart detail dict.
+        """
+        cart = self.get_or_create_cart(user_id)
+        cart.items.all().delete()
+        return self.get_cart_detail(user_id)
+
     def get_cart_detail(self, user_id: str) -> dict:
         """
         Get the full cart detail with product info from Catalog Service.

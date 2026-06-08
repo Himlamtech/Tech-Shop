@@ -7,6 +7,7 @@ and status transitions with history recording.
 
 import logging
 
+from django.conf import settings
 from django.db import transaction
 
 from apps.core.exceptions import NotFoundError, ValidationError
@@ -62,6 +63,15 @@ class PaymentService:
                 to_status=PaymentTransaction.Status.PENDING,
             )
 
+            auto_status = getattr(settings, "PAYMENT_AUTO_STATUS", "success")
+            if auto_status in (
+                PaymentTransaction.Status.SUCCESS,
+                PaymentTransaction.Status.FAILED,
+            ):
+                PaymentService._transition_status(
+                    payment_transaction, auto_status
+                )
+
         logger.info(
             "Payment transaction created",
             extra={
@@ -93,26 +103,11 @@ class PaymentService:
         except PaymentTransaction.DoesNotExist:
             raise NotFoundError("Payment transaction not found")
 
-        if payment_transaction.status != PaymentTransaction.Status.PENDING:
-            raise ValidationError(
-                message=f"Cannot transition from '{payment_transaction.status}' to 'success'. Only pending transactions can be completed.",
-                details=[
-                    {
-                        "field": "status",
-                        "reason": f"Current status is '{payment_transaction.status}', expected 'pending'.",
-                    }
-                ],
-            )
-
+        from_status = payment_transaction.status
         with transaction.atomic():
-            from_status = payment_transaction.status
-            payment_transaction.status = PaymentTransaction.Status.SUCCESS
-            payment_transaction.save(update_fields=["status", "updated_at"])
-
-            PaymentStatusHistory.objects.create(
-                transaction=payment_transaction,
-                from_status=from_status,
-                to_status=PaymentTransaction.Status.SUCCESS,
+            PaymentService._transition_status(
+                payment_transaction,
+                PaymentTransaction.Status.SUCCESS,
             )
 
         logger.info(
@@ -146,26 +141,11 @@ class PaymentService:
         except PaymentTransaction.DoesNotExist:
             raise NotFoundError("Payment transaction not found")
 
-        if payment_transaction.status != PaymentTransaction.Status.PENDING:
-            raise ValidationError(
-                message=f"Cannot transition from '{payment_transaction.status}' to 'failed'. Only pending transactions can be failed.",
-                details=[
-                    {
-                        "field": "status",
-                        "reason": f"Current status is '{payment_transaction.status}', expected 'pending'.",
-                    }
-                ],
-            )
-
+        from_status = payment_transaction.status
         with transaction.atomic():
-            from_status = payment_transaction.status
-            payment_transaction.status = PaymentTransaction.Status.FAILED
-            payment_transaction.save(update_fields=["status", "updated_at"])
-
-            PaymentStatusHistory.objects.create(
-                transaction=payment_transaction,
-                from_status=from_status,
-                to_status=PaymentTransaction.Status.FAILED,
+            PaymentService._transition_status(
+                payment_transaction,
+                PaymentTransaction.Status.FAILED,
             )
 
         logger.info(
@@ -175,6 +155,38 @@ class PaymentService:
                 "from_status": from_status,
                 "to_status": PaymentTransaction.Status.FAILED,
             },
+        )
+
+        return payment_transaction
+
+    @staticmethod
+    def _transition_status(payment_transaction, target_status):
+        """Transition a pending payment transaction to a terminal status."""
+        if payment_transaction.status != PaymentTransaction.Status.PENDING:
+            raise ValidationError(
+                message=(
+                    f"Cannot transition from '{payment_transaction.status}' to '{target_status}'. "
+                    "Only pending transactions can be updated."
+                ),
+                details=[
+                    {
+                        "field": "status",
+                        "reason": (
+                            f"Current status is '{payment_transaction.status}', "
+                            "expected 'pending'."
+                        ),
+                    }
+                ],
+            )
+
+        from_status = payment_transaction.status
+        payment_transaction.status = target_status
+        payment_transaction.save(update_fields=["status", "updated_at"])
+
+        PaymentStatusHistory.objects.create(
+            transaction=payment_transaction,
+            from_status=from_status,
+            to_status=target_status,
         )
 
         return payment_transaction

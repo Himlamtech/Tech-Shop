@@ -80,6 +80,31 @@ class ProductListAPITests(TestCase):
         data = response.json()
         self.assertEqual(len(data["data"]), 5)
 
+    def test_filter_by_status(self):
+        """Status filter should support active/inactive product listing."""
+        inactive_product = Product.objects.create(
+            sku="LIST-INACTIVE",
+            name="Inactive Product",
+            slug="inactive-product",
+            price=Decimal("99.00"),
+            stock=3,
+            brand="TestBrand",
+            category=self.category,
+            status="inactive",
+        )
+        ProductImage.objects.create(
+            product=inactive_product,
+            image_url="https://example.com/inactive.jpg",
+            is_primary=True,
+            sort_order=0,
+        )
+
+        response = self.client.get("/api/v1/products/?status=inactive")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data["data"]), 1)
+        self.assertEqual(data["data"][0]["status"], "inactive")
+
     def test_filter_by_price_range(self):
         """Filter by min/max price should return products in range."""
         response = self.client.get("/api/v1/products/?min_price=20&max_price=40")

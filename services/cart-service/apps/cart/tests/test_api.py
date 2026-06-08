@@ -257,3 +257,40 @@ class CartOnePerCustomerTests(TestCase):
         data = response.json()
         self.assertEqual(data["data"]["items"], [])
         self.assertTrue(Cart.objects.filter(user_id=user_id).exists())
+
+
+@override_settings(
+    DATABASES={
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
+    },
+    CATALOG_SERVICE_URL="http://catalog-service:8002",
+)
+class CartClearAPITests(TestCase):
+    """Tests for DELETE /api/v1/cart/current/items endpoint."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user_id = str(uuid.uuid4())
+        self.cart = Cart.objects.create(user_id=self.user_id)
+        CartItem.objects.create(
+            cart=self.cart,
+            product_id=uuid.uuid4(),
+            quantity=2,
+        )
+
+    @patch("apps.core.middleware.JWTAuthenticationMiddleware._extract_jwt")
+    def test_clear_cart_success(self, mock_jwt):
+        def set_customer(request):
+            request.user_id = self.user_id
+            request.user_role = "customer"
+
+        mock_jwt.side_effect = set_customer
+
+        response = self.client.delete("/api/v1/cart/current/items")
+        self.assertEqual(response.status_code, 200)
+        self.cart.refresh_from_db()
+        self.assertEqual(self.cart.items.count(), 0)
+        self.assertEqual(response.json()["data"]["subtotal"], "0.00")

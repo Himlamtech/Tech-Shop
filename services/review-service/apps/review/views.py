@@ -6,14 +6,21 @@ All responses use the standard envelope format.
 """
 
 import math
+from django.db.models import Avg, Count
 
 from rest_framework.views import APIView
 
-from apps.core.exceptions import ValidationError
-from apps.core.permissions import IsAuthenticated
+from apps.core.exceptions import NotFoundError, ValidationError
+from apps.core.pagination import StandardPagination
+from apps.core.permissions import IsAdmin, IsAuthenticated
 from apps.core.request_context import get_current_request_id
 from apps.core.responses import success_response
-from apps.review.serializers import CreateReviewInputSerializer, ReviewOutputSerializer
+from apps.review.models import Review
+from apps.review.serializers import (
+    CreateReviewInputSerializer,
+    ReviewOutputSerializer,
+    ReviewStatsSerializer,
+)
 from apps.review.services import ReviewService
 
 
@@ -102,6 +109,78 @@ class ProductReviewsView(APIView):
 
         return success_response(response_data, meta=meta)
 
+
+class AdminReviewListView(APIView):
+    """GET /api/v1/reviews/admin/list — Admin review list with filters."""
+
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        queryset = Review.objects.all().order_by("-created_at")
+
+        sentiment_status = request.query_params.get("sentiment_status")
+        sentiment_label = request.query_params.get("sentiment_label")
+        hidden = request.query_params.get("is_hidden")
+        product_id = request.query_params.get("product_id")
+
+        if sentiment_status in {"pending", "completed"}:
+            queryset = queryset.filter(sentiment_status=sentiment_status)
+        if sentiment_label:
+            queryset = queryset.filter(sentiment_label=sentiment_label)
+        if hidden in {"true", "false"}:
+            queryset = queryset.filter(is_hidden=(hidden == "true"))
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
+
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        serializer = ReviewOutputSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+class AdminReviewDetailView(APIView):
+    """GET/DELETE admin review detail and moderation."""
+
+    permission_classes = [IsAdmin]
+
+    def get(self, request, review_id):
+        review = _get_review_or_404(review_id)
+        serializer = ReviewOutputSerializer(review)
+        return success_response(serializer.data)
+
+    def delete(self, request, review_id):
+        review = _get_review_or_404(review_id)
+        serialized = ReviewOutputSerializer(review).data
+        review.delete()
+        return success_response({"deleted": True, "review": serialized})
+
+
+class AdminReviewStatsView(APIView):
+    """GET /api/v1/reviews/admin/stats — Admin review statistics."""
+
+    permission_classes = [IsAdmin]
+
+    def get(self, request):
+        queryset = Review.objects.all()
+        total_reviews = queryset.count()
+        average_rating = queryset.aggregate(avg=Avg("rating"))["avg"] or 0.0
+        sentiment_groups = (
+            queryset.values("sentiment_label")
+            .annotate(count=Count("id"))
+            .order_by("sentiment_label")
+        )
+
+        data = {
+            "total_reviews": total_reviews,
+            "average_rating": round(float(average_rating), 2) if average_rating else 0.0,
+            "reviews_by_sentiment": {
+                (item["sentiment_label"] or "unknown"): item["count"]
+                for item in sentiment_groups
+            },
+        }
+        output = ReviewStatsSerializer(data).data
+        return success_response(output)
+
     def _get_positive_int(self, value, default=1):
         """Parse a positive integer from query param, returning default if invalid."""
         if value is None:
@@ -128,3 +207,10 @@ def _format_serializer_errors(errors):
         else:
             details.append({"field": field, "reason": str(messages)})
     return details
+
+
+def _get_review_or_404(review_id):
+    try:
+        return Review.objects.get(id=review_id)
+    except Review.DoesNotExist as exc:
+        raise NotFoundError("Review not found") from exc

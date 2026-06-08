@@ -9,12 +9,18 @@ import logging
 
 from rest_framework.views import APIView
 
-from apps.core.exceptions import UnauthorizedError
+from apps.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
 from apps.core.pagination import StandardPagination
 from apps.core.permissions import IsAdmin, IsAuthenticated
 from apps.core.responses import error_response, success_response
 from apps.identity.models import User
-from apps.identity.serializers import LoginSerializer, LogoutSerializer, RefreshSerializer, RegisterSerializer
+from apps.identity.serializers import (
+    AdminUserUpdateSerializer,
+    LoginSerializer,
+    LogoutSerializer,
+    RefreshSerializer,
+    RegisterSerializer,
+)
 from apps.identity.services import AccountLockedError, AuthService
 
 logger = logging.getLogger(__name__)
@@ -215,6 +221,19 @@ class AdminUsersView(APIView):
     def get(self, request):
         queryset = User.objects.all().order_by("-created_at")
 
+        role = request.query_params.get("role")
+        is_active = request.query_params.get("is_active")
+        search = request.query_params.get("search")
+
+        if role in {choice for choice, _ in User.Role.choices}:
+            queryset = queryset.filter(role=role)
+
+        if is_active in {"true", "false"}:
+            queryset = queryset.filter(is_active=(is_active == "true"))
+
+        if search:
+            queryset = queryset.filter(email__icontains=search.strip())
+
         paginator = StandardPagination()
         page = paginator.paginate_queryset(queryset, request)
 
@@ -230,3 +249,57 @@ class AdminUsersView(APIView):
         ]
 
         return paginator.get_paginated_response(users_data)
+
+
+class AdminUserDetailView(APIView):
+    """Retrieve or update a single user as admin."""
+
+    permission_classes = [IsAdmin]
+
+    def get(self, request, user_id):
+        user = _get_user_or_404(user_id)
+        return success_response(data=_serialize_admin_user(user))
+
+    def patch(self, request, user_id):
+        user = _get_user_or_404(user_id)
+        serializer = AdminUserUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            raise ValidationError(
+                message="Invalid admin user update data",
+                details=_format_serializer_errors(serializer.errors),
+            )
+
+        data = serializer.validated_data
+
+        if "role" in data:
+            user.role = data["role"]
+
+        if "is_active" in data:
+            user.is_active = data["is_active"]
+
+        if data.get("clear_lockout"):
+            user.failed_login_attempts = 0
+            user.locked_until = None
+
+        user.save()
+        return success_response(data=_serialize_admin_user(user))
+
+
+def _get_user_or_404(user_id):
+    try:
+        return User.objects.get(id=user_id)
+    except User.DoesNotExist as exc:
+        raise NotFoundError("User not found") from exc
+
+
+def _serialize_admin_user(user):
+    return {
+        "id": str(user.id),
+        "email": user.email,
+        "role": user.role,
+        "is_active": user.is_active,
+        "failed_login_attempts": user.failed_login_attempts,
+        "locked_until": user.locked_until.isoformat() if user.locked_until else None,
+        "created_at": user.created_at.isoformat(),
+        "updated_at": user.updated_at.isoformat(),
+    }
