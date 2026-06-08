@@ -1,56 +1,43 @@
 import express from "express";
-import fs from "fs";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
+import { GoogleGenAI } from "@google/genai";
 
-const envCandidates = [
-  path.resolve(process.cwd(), ".env"),
-  path.resolve(process.cwd(), "..", ".env"),
-];
-const envPath = envCandidates.find((candidate) => fs.existsSync(candidate));
-if (envPath) {
-  dotenv.config({ path: envPath });
-}
+dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.FRONTEND_PORT || 3000);
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-const OPENAI_BASE_URL = (process.env.OPENAI_BASE_URL || "https://api.yescale.io/v1").replace(/\/$/, "");
-const OPENAI_CHAT_MODEL = process.env.OPENAI_CHAT_MODEL || "gpt-5.4-nano";
-const OPENAI_MAX_TOKENS = Number(process.env.OPENAI_MAX_TOKENS || 1024);
-const OPENAI_TEMPERATURE = Number(process.env.OPENAI_TEMPERATURE || 0.7);
+const PORT = 3000;
 
 // Parse JSON bodies
 app.use(express.json());
 
-async function createChatCompletion(messages: Array<{ role: string; content: string }>, temperature = OPENAI_TEMPERATURE) {
-  const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: OPENAI_CHAT_MODEL,
-      messages,
-      temperature,
-      max_tokens: OPENAI_MAX_TOKENS,
-    }),
-  });
+// Initialize Gemini SDK lazily, as instructed in Guidelines (fails gracefully on missing key)
+let aiClient: GoogleGenAI | null = null;
+const MODEL_NAME = "gemini-3.5-flash";
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenAI-compatible API error (${response.status}): ${errorText}`);
+function getGeminiClient(): GoogleGenAI {
+  if (!aiClient) {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) {
+      console.warn("WARNING: GEMINI_API_KEY is not defined. Using mock fallback mode for Gemini API calls.");
+      // We will handle key being missing elegantly so the server doesn't crash, but throws descriptive mock results
+    }
+    aiClient = new GoogleGenAI({
+      apiKey: key || "MOCK_KEY",
+      httpOptions: {
+        headers: {
+          "User-Agent": "aistudio-build",
+        },
+      },
+    });
   }
-
-  const payload = await response.json();
-  return payload.choices?.[0]?.message?.content || "";
+  return aiClient;
 }
 
 // API Routes
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", usingRealAI: !!OPENAI_API_KEY, model: OPENAI_CHAT_MODEL });
+  res.json({ status: "ok", usingRealGemini: !!process.env.GEMINI_API_KEY });
 });
 
 // Product Q&A Endpoint
@@ -61,11 +48,12 @@ app.post("/api/product-qa", async (req, res) => {
   }
 
   // Gracefully check for real API key
-  if (!OPENAI_API_KEY) {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
     // Elegant fallback simulation if no key is supplied
     setTimeout(() => {
       res.json({
-        answer: `[DEMO MODE - OPENAI KEY NOT PROVIDED] As an AI, I analyzed **${product.name}** to answer your question: "${question}". Based on its official specs (Price: $${product.price}, Category: ${product.category}), here's what you need to know:
+        answer: `[DEMO MODE - GEMINI KEY NOT PROVIDED] As an AI, I analyzed **${product.name}** to answer your question: "${question}". Based on its official specs (Price: $${product.price}, Category: ${product.category}), here's what you need to know:
 1. **Dynamic Capabilities:** It highlights features like ${product.features[0] || 'advanced premium components'} and ${product.features[1] || 'durable styling'}.
 2. **Compatibility:** Its ${product.specs[0]?.label || 'Specs'} is rated at "${product.specs[0]?.value || 'Superior'}" making it ideal for high-performance setups.
 3. **Verdict:** This is a stellar choice for users seeking efficiency in their daily flow. Feel free to supply custom API Secret keys in Settings if you'd like live full-scale analysis!`,
@@ -75,6 +63,7 @@ app.post("/api/product-qa", async (req, res) => {
   }
 
   try {
+    const ai = getGeminiClient();
     const systemInstruction = `You are a friendly, highly knowledgeable tech sales consultant at Aether Tech Shop. 
 An customer is asking a about a specific product in our store: "${product.name}".
 Use the following product specifications to answer their question exhaustively and professionally:
@@ -90,14 +79,18 @@ ${product.specs.map((s: any) => `- ${s.label}: ${s.value}`).join("\n")}
 
 Respond in clear Markdown. Be objective, honest, enthusiastic, and target their use-case directly. Do not make up facts.`;
 
-    const answer = await createChatCompletion([
-      { role: "system", content: systemInstruction },
-      { role: "user", content: question },
-    ]);
+    const response = await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: question,
+      config: {
+        systemInstruction,
+        temperature: 0.7,
+      },
+    });
 
-    res.json({ answer });
+    res.json({ answer: response.text });
   } catch (error: any) {
-    console.error("OpenAI Product QA Error:", error);
+    console.error("Gemini Product QA Error:", error);
     res.status(500).json({ error: error.message || "Failed to generate AI response" });
   }
 });
@@ -109,7 +102,8 @@ app.post("/api/product-compare", async (req, res) => {
     return res.status(400).json({ error: "Missing productA or productB parameter" });
   }
 
-  if (!OPENAI_API_KEY) {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
     // Elegant mock fallback
     setTimeout(() => {
       res.json({
@@ -137,6 +131,7 @@ app.post("/api/product-compare", async (req, res) => {
   }
 
   try {
+    const ai = getGeminiClient();
     const systemInstruction = `You are an expert tech product analyst. 
 Compare the technical specs, pricing, and capabilities of the two tech products listed below. 
 Generate a beautifully formatted side-by-side comparison report in Markdown.
@@ -166,17 +161,18 @@ Product B Info:
 - Features: ${productB.features.join(", ")}
 - Specs: ${productB.specs.map((s: any) => `${s.label}: ${s.value}`).join(", ")}`;
 
-    const report = await createChatCompletion(
-      [
-        { role: "system", content: systemInstruction },
-        { role: "user", content: "Generate comparison report." },
-      ],
-      0.8,
-    );
+    const response = await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: "Generate comparison report.",
+      config: {
+        systemInstruction,
+        temperature: 0.8,
+      },
+    });
 
-    res.json({ report });
+    res.json({ report: response.text });
   } catch (error: any) {
-    console.error("OpenAI Product Compare Error:", error);
+    console.error("Gemini Product Compare Error:", error);
     res.status(500).json({ error: error.message || "Failed to generate AI comparison" });
   }
 });
@@ -192,7 +188,8 @@ app.post("/api/chat", async (req, res) => {
   const userMessages = messages.filter((m: any) => m.sender === "user");
   const latestMessage = userMessages[userMessages.length - 1]?.text || "";
 
-  if (!OPENAI_API_KEY) {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
     // Elegant simulated fallback
     setTimeout(() => {
       let responseText = `[DEMO MODE] Thanks for asking! I'm here to act as your Aether Tech Personal Shopper. Currently, we have some fantastic devices available, including the **Aether Glass Pro** ($899), the **Quantum Sound H1** ($349), and the developers' favorite **Nexus Key Zero** ($219). Let me know if you would like me to compare them or give you advice!`;
@@ -212,6 +209,8 @@ app.post("/api/chat", async (req, res) => {
   }
 
   try {
+    const ai = getGeminiClient();
+    
     // Construct formatting and store catalogue guidelines
     const modelSystemInstruction = `You are the primary tech expert AI shopping assistant for AETHER Tech Shop, a premium, minimalist retailer for futuristic, extremely high-end hardware.
 You are warm, intelligent, objective, and expert-level. You speak with clear, supportive enthusiasm and avoid buzzwords.
@@ -229,19 +228,23 @@ Catalog Overview of products currently in stock:
 If a specific product is currently selected and highlighted by the user (ID: ${selectedProductId || "(none)"}), make sure to lean towards showcasing it if it fits their query.
 Use standard clean Markdown formatting in responses. Always keep it engaging!`;
 
+    // Flatten history into Gemini-SDK expected message structure or simple continuous chat
+    // For simplicity and extreme robustness utilizing gemini-3.5-flash:
+    // Format previous conversation into a cohesive text prompt representation
     const formattedPrompt = messages.map((m: any) => `${m.sender === "user" ? "Customer" : "AI Shopping Expert"}: ${m.text}`).join("\n") + "\nAI Shopping Expert:";
 
-    const text = await createChatCompletion(
-      [
-        { role: "system", content: modelSystemInstruction },
-        { role: "user", content: formattedPrompt },
-      ],
-      0.75,
-    );
+    const response = await ai.models.generateContent({
+      model: MODEL_NAME,
+      contents: formattedPrompt,
+      config: {
+        systemInstruction: modelSystemInstruction,
+        temperature: 0.75,
+      },
+    });
 
-    res.json({ text });
+    res.json({ text: response.text });
   } catch (error: any) {
-    console.error("OpenAI Chat Error:", error);
+    console.error("Gemini Chat助理 Error:", error);
     res.status(500).json({ error: error.message || "Something went wrong in the AI engine" });
   }
 });

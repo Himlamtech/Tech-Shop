@@ -38,19 +38,3 @@ export interface Message {
   text: string;
   timestamp: Date;
 }
-
-export interface AuthUser {
-  id: string;
-  email: string;
-  role: "admin" | "staff" | "customer";
-  is_active?: boolean;
-}
-
-export interface AuthTokens {
-  accessToken: string;
-  refreshToken: string;
-}
-
-export interface AuthSession extends AuthTokens {
-  user: AuthUser;
-}
