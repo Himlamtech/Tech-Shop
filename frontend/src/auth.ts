@@ -1,7 +1,18 @@
+import {
+  ConfirmationResult,
+  GoogleAuthProvider,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  signInWithPopup,
+  signOut,
+} from "firebase/auth";
+
+import { firebaseAuth } from "./firebase";
 import { AuthSession, AuthTokens, AuthUser } from "./types";
 
 const AUTH_STORAGE_KEY = "techshop_auth_session";
 const AUTH_BASE_URL = import.meta.env.VITE_AUTH_BASE_URL || "/api/auth";
+const FIREBASE_PHONE_RECAPTCHA_ID = "firebase-phone-recaptcha";
 
 type AuthMode = "login" | "register";
 
@@ -21,6 +32,8 @@ interface AuthResponse {
   user: AuthUser;
 }
 
+let recaptchaVerifier: RecaptchaVerifier | null = null;
+
 function buildUrl(path: string) {
   return `${AUTH_BASE_URL}${path}`;
 }
@@ -33,6 +46,21 @@ function normalizeSession(payload: AuthResponse): AuthSession {
   };
 }
 
+async function synchronizeSessionUser(session: AuthSession) {
+  try {
+    const user = await fetchCurrentUser(session.accessToken);
+    return {
+      ...session,
+      user: {
+        ...session.user,
+        ...user,
+      },
+    } satisfies AuthSession;
+  } catch {
+    return session;
+  }
+}
+
 async function parseResponse<T>(response: Response): Promise<T> {
   const payload = (await response.json()) as ApiEnvelope<T>;
   if (!response.ok || !payload.success) {
@@ -40,6 +68,31 @@ async function parseResponse<T>(response: Response): Promise<T> {
     throw new Error(details || payload.error?.message || "Authentication request failed.");
   }
   return payload.data;
+}
+
+async function authenticateWithFirebaseIdToken(idToken: string) {
+  const response = await fetch(buildUrl("/firebase"), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ id_token: idToken }),
+  });
+
+  const data = await parseResponse<AuthResponse>(response);
+  return synchronizeSessionUser(normalizeSession(data));
+}
+
+function getRecaptchaVerifier(containerId = FIREBASE_PHONE_RECAPTCHA_ID) {
+  if (recaptchaVerifier) {
+    return recaptchaVerifier;
+  }
+
+  recaptchaVerifier = new RecaptchaVerifier(firebaseAuth, containerId, {
+    size: "invisible",
+  });
+
+  return recaptchaVerifier;
 }
 
 export function loadStoredSession(): AuthSession | null {
@@ -84,7 +137,36 @@ export async function authenticate(mode: AuthMode, credentials: { email: string;
   });
 
   const data = await parseResponse<AuthResponse>(response);
-  return normalizeSession(data);
+  return synchronizeSessionUser(normalizeSession(data));
+}
+
+export async function authenticateWithGoogle() {
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: "select_account" });
+
+  const credential = await signInWithPopup(firebaseAuth, provider);
+  const idToken = await credential.user.getIdToken(true);
+  return authenticateWithFirebaseIdToken(idToken);
+}
+
+export async function startPhoneSignIn(phoneNumber: string) {
+  const verifier = getRecaptchaVerifier();
+  await verifier.render();
+  return signInWithPhoneNumber(firebaseAuth, phoneNumber, verifier);
+}
+
+export async function completePhoneSignIn(confirmation: ConfirmationResult, code: string) {
+  const result = await confirmation.confirm(code);
+  const idToken = await result.user.getIdToken(true);
+  return authenticateWithFirebaseIdToken(idToken);
+}
+
+export async function clearFirebaseClientSession() {
+  try {
+    await signOut(firebaseAuth);
+  } catch {
+    // Ignore client-side Firebase sign-out failures; local session is the source of truth.
+  }
 }
 
 export async function fetchCurrentUser(accessToken: string) {
@@ -107,7 +189,18 @@ export async function refreshSession(refreshToken: string) {
   });
 
   const data = await parseResponse<AuthResponse>(response);
-  return normalizeSession(data);
+  return synchronizeSessionUser(normalizeSession(data));
+}
+
+export async function restoreSession(session: AuthSession) {
+  const user = await fetchCurrentUser(session.accessToken);
+  return {
+    ...session,
+    user: {
+      ...session.user,
+      ...user,
+    },
+  } satisfies AuthSession;
 }
 
 export async function logoutSession(refreshToken: string) {

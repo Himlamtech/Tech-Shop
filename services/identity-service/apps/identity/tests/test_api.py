@@ -16,7 +16,8 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from apps.core.exceptions import ServiceUnavailableError
-from apps.identity.models import RefreshToken, User
+from apps.identity.models import FirebaseIdentity, RefreshToken, User
+from apps.identity.services import FirebaseAuthenticationError
 
 
 def _extract_access_token(response):
@@ -267,6 +268,104 @@ class RefreshTokenAPITests(TestCase):
         payload = {"refresh_token": raw_token}
         response = self.client.post(self.url, data=payload, format="json")
         self.assertEqual(response.status_code, 200)
+
+
+@override_settings(
+    DATABASES={
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": ":memory:",
+        }
+    },
+    JWT_ACCESS_TOKEN_LIFETIME_MINUTES=15,
+    JWT_REFRESH_TOKEN_LIFETIME_DAYS=7,
+    JWT_ISSUER="techshop.identity",
+    JWT_ALGORITHM="HS256",
+)
+class FirebaseAuthAPITests(TestCase):
+    """Tests for POST /api/v1/auth/firebase endpoint."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.url = "/api/v1/auth/firebase"
+
+    @patch("apps.identity.services.AuthService._verify_firebase_id_token")
+    def test_google_exchange_creates_customer_and_identity(self, mock_verify):
+        mock_verify.return_value = {
+            "uid": "google-uid-001",
+            "email": "social@example.com",
+            "email_verified": True,
+            "firebase": {"sign_in_provider": "google.com"},
+        }
+
+        response = self.client.post(self.url, data={"id_token": "firebase-token"}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["user"]["email"], "social@example.com")
+        self.assertEqual(data["user"]["role"], "customer")
+        self.assertTrue(User.objects.filter(email="social@example.com").exists())
+        self.assertTrue(
+            FirebaseIdentity.objects.filter(provider="google.com", subject="google-uid-001").exists()
+        )
+
+    @patch("apps.identity.services.AuthService._verify_firebase_id_token")
+    def test_phone_exchange_creates_placeholder_customer(self, mock_verify):
+        mock_verify.return_value = {
+            "uid": "phone-uid-001",
+            "phone_number": "+84901234567",
+            "firebase": {"sign_in_provider": "phone"},
+        }
+
+        response = self.client.post(self.url, data={"id_token": "firebase-token"}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()["data"]
+        self.assertEqual(data["user"]["email"], "phone-84901234567@phone.techshop.local")
+        self.assertTrue(
+            FirebaseIdentity.objects.filter(provider="phone", subject="phone-uid-001").exists()
+        )
+
+    @patch("apps.identity.services.AuthService._verify_firebase_id_token")
+    def test_google_exchange_links_existing_user_by_email(self, mock_verify):
+        existing_user = User.objects.create(
+            email="linked@example.com",
+            password_hash=make_password("password123"),
+            role="customer",
+        )
+        mock_verify.return_value = {
+            "uid": "google-uid-002",
+            "email": "linked@example.com",
+            "email_verified": True,
+            "firebase": {"sign_in_provider": "google.com"},
+        }
+
+        response = self.client.post(self.url, data={"id_token": "firebase-token"}, format="json")
+
+        self.assertEqual(response.status_code, 200)
+        identity = FirebaseIdentity.objects.get(provider="google.com", subject="google-uid-002")
+        self.assertEqual(identity.user_id, existing_user.id)
+
+    @patch("apps.identity.services.AuthService._verify_firebase_id_token")
+    def test_google_exchange_requires_verified_email(self, mock_verify):
+        mock_verify.return_value = {
+            "uid": "google-uid-003",
+            "email": "unverified@example.com",
+            "email_verified": False,
+            "firebase": {"sign_in_provider": "google.com"},
+        }
+
+        response = self.client.post(self.url, data={"id_token": "firebase-token"}, format="json")
+
+        self.assertEqual(response.status_code, 422)
+
+    @patch("apps.identity.services.AuthService._verify_firebase_id_token")
+    def test_exchange_rejects_invalid_firebase_token(self, mock_verify):
+        mock_verify.side_effect = FirebaseAuthenticationError("Firebase token is invalid or expired.")
+
+        response = self.client.post(self.url, data={"id_token": "firebase-token"}, format="json")
+
+        self.assertEqual(response.status_code, 401)
 
 
 @override_settings(

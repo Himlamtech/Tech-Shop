@@ -37,6 +37,40 @@ class User(models.Model):
         return f"{self.email} ({self.role})"
 
 
+class FirebaseIdentity(models.Model):
+    """Maps a Firebase provider subject to a local TechShop user."""
+
+    class Provider(models.TextChoices):
+        GOOGLE = "google.com", "Google"
+        PHONE = "phone", "Phone"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="firebase_identities",
+    )
+    provider = models.CharField(max_length=32, choices=Provider.choices)
+    subject = models.CharField(max_length=255)
+    email = models.EmailField(max_length=254, null=True, blank=True)
+    phone_number = models.CharField(max_length=32, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "firebase_identities"
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["provider", "subject"],
+                name="identity_provider_subject_unique",
+            )
+        ]
+
+    def __str__(self):
+        return f"FirebaseIdentity(provider={self.provider}, subject={self.subject})"
+
+
 class RefreshToken(models.Model):
     """Stores hashed refresh tokens for token rotation and revocation."""
 

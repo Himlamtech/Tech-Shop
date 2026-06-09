@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
-import { X, Star, Sparkles, Send, HelpCircle, Check, Loader2, Heart } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Heart, Loader2, MessageSquareText, Send, Sparkles, Star, X } from "lucide-react";
 import { AuthSession, Product } from "../types";
 import MarkdownRenderer from "./MarkdownRenderer";
 import { createReview } from "../reviews";
@@ -12,6 +12,14 @@ interface ProductDetailsProps {
   onToggleFavorite: (product: Product) => void;
   authSession: AuthSession | null;
   onProductRefresh: (productId: string) => Promise<void>;
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 export default function ProductDetails({ product, onClose, onAddToCart, isFavorite, onToggleFavorite, authSession, onProductRefresh }: ProductDetailsProps) {
@@ -100,113 +108,213 @@ export default function ProductDetails({ product, onClose, onAddToCart, isFavori
   };
 
   const suggestions = [
-    { label: "Is it worth the price?", query: "Be extremely honest: is this product worth its price tag, or are there cheaper options that do the same?" },
-    { label: "Who is this designed for?", query: "Detail the perfect target audience for this product. What lifestyle or problem does it solve?" },
-    { label: "Explain a hidden feature", query: "What is an overlooked or hidden feature of this product that most users don't know about?" },
+    { label: "Daily fit", query: `Who should buy ${product.name}, and who should skip it?` },
+    { label: "Tradeoffs", query: `What are the main strengths and weaknesses of ${product.name}?` },
+    { label: "Setup advice", query: `How would you use ${product.name} in a premium desk setup or travel workflow?` },
   ];
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/65 p-0 md:p-4 transition-all duration-300">
-      <div className="absolute inset-0 -z-10" onClick={onClose} />
+  const highlights = useMemo(() => product.features.slice(0, 4), [product.features]);
+  const pros = useMemo(() => product.features.slice(0, 3), [product.features]);
+  const cons = useMemo(() => {
+    const cues = [
+      product.stock !== undefined ? `Availability depends on ${product.stock} units currently in stock.` : null,
+      product.price > 300 ? "Premium pricing is better suited to buyers prioritizing performance and polish." : "Feature depth may be lighter than flagship-tier alternatives.",
+      product.reviewsCount < 5 ? "There are still limited customer reviews to validate long-term usage." : "Specs should still be checked against your exact workflow before purchase.",
+    ];
+    return cues.filter((item): item is string => Boolean(item)).slice(0, 3);
+  }, [product]);
+  const useCases = useMemo(() => [
+    `${product.category} buyers comparing premium options with AI assistance.`,
+    `Users who care about ${product.features[0] || "balanced performance"} in day-to-day use.`,
+    `Shoppers building a polished setup around ${product.brand || "trusted"} hardware.`,
+  ], [product]);
 
-      <div className="w-full max-w-4xl h-full md:h-[95vh] rounded-none md:rounded-l-3xl bg-editorial-bg border-l border-editorial-text/25 flex flex-col shadow-xl animate-in slide-in-from-right duration-300">
-        <div className="bg-editorial-paper px-6 py-4 border-b border-editorial-text/15 flex items-center justify-between shadow-none">
-          <div className="flex items-center gap-2 font-sans">
-            <span className="text-[10px] font-mono font-bold tracking-widest text-editorial-text bg-editorial-bg border border-editorial-text/15 px-3 py-1 rounded-full uppercase">Catalogue Detail</span>
-            <span className="text-[10px] text-editorial-text/60 font-mono">SPECIMEN ID: {product.id}</span>
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-end bg-slate-950/70 p-0 md:p-4 backdrop-blur-md">
+      <div className="absolute inset-0" onClick={onClose} />
+
+      <aside className="relative z-10 flex h-full w-full max-w-6xl flex-col overflow-hidden rounded-none border-l border-white/10 bg-[linear-gradient(180deg,rgba(7,11,24,0.96),rgba(6,9,20,0.96))] shadow-[0_30px_100px_rgba(2,6,23,0.7)] md:h-[95vh] md:rounded-[32px] md:border">
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-4 md:px-8">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/45">Product intelligence</p>
+            <h2 className="mt-1 text-xl font-semibold text-editorial-text">{product.name}</h2>
           </div>
-          <button onClick={onClose} className="flex items-center justify-center w-8 h-8 rounded-full border border-editorial-text/15 text-editorial-text/60 hover:bg-editorial-text hover:text-editorial-bg transition-colors cursor-pointer">
-            <X className="w-4 h-4" />
+          <button onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-editorial-text/70 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-editorial-text">
+            <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="flex-grow overflow-y-auto p-5 md:p-8 space-y-8">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            <div className="lg:col-span-5 space-y-6">
-              <div className="relative pt-[80%] rounded-2xl bg-white border border-editorial-text/15 overflow-hidden shadow-none">
-                <img src={product.image} alt={product.name} className="absolute inset-0 w-full h-full object-cover" />
-              </div>
+        <div className="grid flex-1 gap-0 overflow-hidden xl:grid-cols-[minmax(0,1.1fr)_440px]">
+          <div className="overflow-y-auto p-6 md:p-8">
+            <div className="grid gap-8 lg:grid-cols-[minmax(0,360px)_minmax(0,1fr)]">
+              <div className="space-y-5">
+                <div className="overflow-hidden rounded-[28px] border border-white/10 bg-slate-950/40">
+                  <img src={product.image} alt={product.name} className="h-[360px] w-full object-cover" />
+                </div>
 
-              <div className="bg-editorial-paper rounded-2xl border border-editorial-text/15 p-5 shadow-none space-y-4">
-                <h4 className="text-[10px] font-bold text-editorial-text/75 uppercase tracking-widest font-mono border-b border-editorial-text/15 pb-2">Technical Blueprint</h4>
-                <div className="divide-y divide-editorial-text/10 text-xs text-editorial-text">
-                  {product.specs.map((spec, idx) => (
-                    <div key={idx} className="flex justify-between py-2.5 gap-4">
-                      <span className="font-sans opacity-60">{spec.label}</span>
-                      <span className="font-mono font-bold text-right">{spec.value}</span>
-                    </div>
-                  ))}
+                <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
+                  <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/45">Specs table</p>
+                  <div className="mt-4 divide-y divide-white/8 text-sm">
+                    {product.specs.map((spec, idx) => (
+                      <div key={idx} className="flex items-start justify-between gap-4 py-3">
+                        <span className="text-editorial-text/52">{spec.label}</span>
+                        <span className="max-w-[55%] text-right font-medium text-editorial-text">{spec.value}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              <div className="bg-editorial-paper rounded-2xl border border-editorial-text/15 p-5 shadow-none">
-                <h4 className="text-[10px] font-bold text-editorial-text/75 uppercase tracking-widest font-mono mb-3">Capabilities Checklist</h4>
-                <div className="space-y-2.5 text-editorial-text">
-                  {product.features.map((feature, idx) => (
-                    <div key={idx} className="flex gap-2.5 items-start text-xs font-sans">
-                      <div className="flex items-center justify-center w-4 h-4 bg-editorial-accent text-editorial-text border border-editorial-text/15 rounded-md mt-0.5 shrink-0">
-                        <Check className="w-2.5 h-2.5" />
-                      </div>
-                      <span>{feature}</span>
+              <div className="space-y-6">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-editorial-text/58">
+                  <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1.5 text-cyan-100">{product.category}</span>
+                  <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5">{product.brand || "TechShop"}</span>
+                  <span className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5">SKU {product.sku || "n/a"}</span>
+                </div>
+
+                <div className="flex flex-wrap items-end justify-between gap-4 border-b border-white/10 pb-6">
+                  <div>
+                    <h3 className="text-3xl font-semibold tracking-[-0.04em] text-editorial-text md:text-4xl">{product.name}</h3>
+                    <p className="mt-3 max-w-2xl text-sm leading-7 text-editorial-text/66">{product.description}</p>
+                  </div>
+                  <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4 text-right">
+                    <p className="text-3xl font-semibold text-editorial-text">{formatCurrency(product.price)}</p>
+                    <div className="mt-2 flex items-center justify-end gap-1 text-sm text-amber-200">
+                      <Star className="h-4 w-4 fill-current" />
+                      <span className="font-semibold text-editorial-text">{product.rating.toFixed(1)}</span>
+                      <span className="text-editorial-text/45">({product.reviewsCount} reviews)</span>
                     </div>
-                  ))}
+                  </div>
+                </div>
+
+                <div className="rounded-[28px] border border-cyan-400/15 bg-[linear-gradient(180deg,rgba(76,130,255,0.12),rgba(85,214,255,0.04))] p-5">
+                  <div className="flex items-center gap-2 text-cyan-100">
+                    <Sparkles className="h-4 w-4" />
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em]">AI summary</p>
+                  </div>
+                  <p className="mt-3 text-sm leading-7 text-editorial-text/78">{product.aiOverview}</p>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-3">
+                  <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-5">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-editorial-text/45">Pros</p>
+                    <div className="mt-4 space-y-3 text-sm text-editorial-text/72">
+                      {pros.map((item, idx) => (
+                        <div key={idx} className="flex gap-2">
+                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-cyan-300" />
+                          <span>{item}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-5">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-editorial-text/45">Considerations</p>
+                    <div className="mt-4 space-y-3 text-sm text-editorial-text/68">
+                      {cons.map((item, idx) => (
+                        <div key={idx}>{item}</div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-5">
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-editorial-text/45">Use cases</p>
+                    <div className="mt-4 space-y-3 text-sm text-editorial-text/72">
+                      {useCases.map((item, idx) => (
+                        <div key={idx}>{item}</div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
+                  <p className="text-[11px] uppercase tracking-[0.18em] text-editorial-text/45">Feature highlights</p>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {highlights.map((feature, idx) => (
+                      <span key={idx} className="rounded-full border border-white/10 bg-slate-950/35 px-3 py-2 text-sm text-editorial-text/72">
+                        {feature}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6">
+                  <div className="flex items-center justify-between gap-4 border-b border-white/10 pb-4">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-editorial-text/45">Reviews</p>
+                      <p className="mt-1 text-sm text-editorial-text/60">Verified customer feedback and sentiment.</p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleSubmitReview} className="mt-5 rounded-[24px] border border-white/10 bg-slate-950/35 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-editorial-text">Submit review</p>
+                      <select value={reviewRating} onChange={(e) => setReviewRating(Number(e.target.value))} className="rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2 text-sm text-editorial-text outline-none">
+                        {[5, 4, 3, 2, 1].map((value) => <option key={value} value={value}>{value} stars</option>)}
+                      </select>
+                    </div>
+                    <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} required minLength={3} placeholder={authSession?.user.role === "customer" ? "Share how the product performed in real use." : "Sign in as a customer to submit a review."} className="mt-4 min-h-28 w-full rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-sm text-editorial-text outline-none placeholder:text-editorial-text/28 focus:border-cyan-400/25" disabled={reviewBusy || authSession?.user.role !== "customer"} />
+                    {reviewError && <div className="mt-3 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">{reviewError}</div>}
+                    <button type="submit" disabled={reviewBusy || authSession?.user.role !== "customer" || !reviewComment.trim()} className="mt-4 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50">
+                      {reviewBusy ? "Submitting" : "Publish review"}
+                    </button>
+                  </form>
+
+                  <div className="mt-6 divide-y divide-white/8">
+                    {product.reviews.length === 0 ? (
+                      <p className="py-4 text-sm text-editorial-text/55">No published reviews yet.</p>
+                    ) : product.reviews.map((review) => (
+                      <div key={review.id} className="py-4 first:pt-0">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div className="text-sm text-editorial-text">
+                            <span className="font-semibold">{review.author}</span>
+                            <span className="mx-2 text-editorial-text/25">•</span>
+                            <span className="text-editorial-text/52">{review.date}</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-amber-200">
+                            {[1, 2, 3, 4, 5].map((value) => (
+                              <Star key={value} className={`h-3.5 w-3.5 ${value <= review.rating ? "fill-current" : "text-white/15"}`} />
+                            ))}
+                          </div>
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-editorial-text/68">{review.text}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
+          </div>
 
-            <div className="lg:col-span-7 space-y-6">
-              <div className="space-y-2 pb-5 border-b border-editorial-text/15">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className="text-[9px] font-bold text-editorial-text bg-editorial-bg border border-editorial-text/15 px-3 py-0.5 rounded-full uppercase tracking-wider font-mono">{product.category}</span>
-                  <div className="flex items-center gap-1.5 bg-editorial-paper rounded-full px-3.5 py-1 border border-editorial-text/10 text-editorial-text font-sans">
-                    <Star className="w-3.5 h-3.5 text-yellow-550 fill-yellow-500 opacity-95" />
-                    <span className="text-xs font-bold">{product.rating}</span>
-                    <span className="text-[10px] opacity-60">({product.reviewsCount} reviews)</span>
+          <div className="border-t border-white/10 bg-slate-950/35 xl:border-l xl:border-t-0">
+            <div className="flex h-full flex-col overflow-y-auto p-6">
+              <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-400/20 bg-cyan-400/10 text-cyan-100">
+                    <MessageSquareText className="h-5 w-5" />
                   </div>
-                </div>
-
-                <h2 className="serif text-2xl md:text-3xl font-bold text-editorial-text tracking-tight leading-tight">{product.name}</h2>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-2xl font-bold text-editorial-text font-mono">${product.price}</span>
-                  <span className="text-xs text-editorial-text/50 font-sans">SKU {product.sku || "n/a"}</span>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <p className="text-xs md:text-sm text-editorial-text/80 leading-relaxed font-sans">{product.description}</p>
-                <div className="bg-editorial-accent/30 border border-editorial-text/15 rounded-2xl p-5 shadow-none space-y-2.5">
-                  <div className="flex items-center gap-2 text-editorial-text">
-                    <Sparkles className="w-4 h-4 text-editorial-text shrink-0 opacity-80" />
-                    <h4 className="text-[10px] font-bold uppercase tracking-widest font-mono">AI Generative Overview</h4>
+                  <div>
+                    <p className="text-sm font-semibold text-editorial-text">Ask AI about this product</p>
+                    <p className="text-xs text-editorial-text/55">Get fit, tradeoff, and use-case guidance in context.</p>
                   </div>
-                  <p className="serif text-[12px] md:text-xs text-editorial-text/80 leading-relaxed italic pl-2 border-l border-editorial-text/30">"{product.aiOverview}"</p>
-                </div>
-              </div>
-
-              <div className="bg-editorial-paper rounded-2xl border border-editorial-text/15 p-5 md:p-6 space-y-5">
-                <div className="flex items-center justify-between border-b border-editorial-text/15 pb-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-editorial-text text-editorial-bg shadow-none"><HelpCircle className="w-4 h-4" /></div>
-                    <div>
-                      <h4 className="text-xs font-bold text-editorial-text uppercase tracking-widest font-mono">Ask Gemini Specialist</h4>
-                      <p className="text-[10px] text-editorial-text/60 font-sans uppercase tracking-wider font-semibold">Real-time specifications advisor</p>
-                    </div>
-                  </div>
-                  <Sparkles className="w-4 h-4 text-editorial-text shrink-0 opacity-80" />
                 </div>
 
                 {qaHistory.length > 0 && (
-                  <div className="space-y-4 max-h-[220px] overflow-y-auto pr-2 divide-y divide-editorial-text/10">
+                  <div className="mt-5 max-h-[340px] space-y-4 overflow-y-auto pr-1">
                     {qaHistory.map((qa, index) => (
-                      <div key={index} className="space-y-2 pt-3 first:pt-0">
-                        <div className="flex items-start gap-2 justify-end">
-                          <div className="bg-editorial-bg text-editorial-text border border-editorial-text/15 text-xs py-1.5 px-3 rounded-xl font-sans font-medium max-w-[85%] text-left">{qa.q}</div>
+                      <div key={index} className="space-y-2">
+                        <div className="ml-auto max-w-[90%] rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-50">
+                          {qa.q}
                         </div>
-                        <div className="flex items-start gap-2.5">
-                          <div className="w-5 h-5 rounded-full bg-editorial-text flex items-center justify-center text-editorial-bg text-[9px] font-mono font-bold shrink-0">AI</div>
-                          <div className="bg-editorial-bg border border-editorial-text/15 text-editorial-text text-xs py-2 px-3.5 rounded-xl font-sans max-w-[90%] text-left shadow-none">
-                            {qa.a === "" ? <div className="flex items-center gap-2 text-[11px] text-editorial-text/50 font-sans italic py-1 animate-pulse"><Loader2 className="w-3.5 h-3.5 text-editorial-text animate-spin" /><span>Consulting Gemini Core...</span></div> : <MarkdownRenderer content={qa.a} />}
-                          </div>
+                        <div className="max-w-[92%] rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-3 text-sm leading-6 text-editorial-text/74">
+                          {qa.a === "" ? (
+                            <div className="flex items-center gap-2 text-editorial-text/55">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              AI is preparing a product answer...
+                            </div>
+                          ) : (
+                            <MarkdownRenderer content={qa.a} />
+                          )}
                         </div>
                       </div>
                     ))}
@@ -214,72 +322,37 @@ export default function ProductDetails({ product, onClose, onAddToCart, isFavori
                   </div>
                 )}
 
-                <div className="space-y-1.5">
-                  <p className="text-[10px] text-editorial-text/45 font-mono uppercase tracking-widest font-bold">Tap a speculative query:</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {suggestions.map((item, idx) => (
-                      <button key={idx} onClick={() => handleAskAI(item.query)} disabled={loading} className="text-[10px] text-editorial-text hover:text-editorial-bg bg-transparent hover:bg-editorial-text border border-editorial-text/15 rounded-full py-1.5 px-3 scroll-smooth cursor-pointer disabled:opacity-50 transition-all duration-150 uppercase tracking-widest font-mono font-bold">{item.label}</button>
-                    ))}
-                  </div>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  {suggestions.map((item) => (
+                    <button key={item.label} onClick={() => handleAskAI(item.query)} disabled={loading} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-editorial-text/64 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-editorial-text disabled:opacity-50">
+                      {item.label}
+                    </button>
+                  ))}
                 </div>
 
-                <form onSubmit={(e) => { e.preventDefault(); handleAskAI(question); }} className="flex gap-2 relative">
-                  <input type="text" value={question} onChange={(e) => setQuestion(e.target.value)} disabled={loading} placeholder={`Ask about ${product.name}...`} className="flex-grow text-xs bg-editorial-bg border border-editorial-text/15 focus:border-editorial-text placeholder:text-editorial-text/30 hover:border-editorial-text/45 rounded-xl px-4 py-3 pr-11 focus:outline-none text-editorial-text transition-all duration-150" />
-                  <button type="submit" disabled={!question.trim() || loading} className="absolute right-1.5 top-1.5 h-8.5 w-8.5 rounded-lg bg-editorial-text hover:bg-editorial-text/90 text-editorial-bg flex items-center justify-center cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-colors"><Send className="w-3.5 h-3.5" /></button>
+                <form onSubmit={(e) => { e.preventDefault(); handleAskAI(question); }} className="mt-5 flex gap-2">
+                  <input type="text" value={question} onChange={(e) => setQuestion(e.target.value)} disabled={loading} placeholder={`Ask about ${product.name}`} className="flex-1 rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-sm text-editorial-text outline-none placeholder:text-editorial-text/28 focus:border-cyan-400/25" />
+                  <button type="submit" disabled={!question.trim() || loading} className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[linear-gradient(135deg,#4c82ff,#55d6ff)] text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50">
+                    <Send className="h-4 w-4" />
+                  </button>
                 </form>
               </div>
 
-              <div className="flex items-center gap-3 bg-editorial-paper p-4 rounded-2xl border border-editorial-text/15 shadow-none">
-                <button onClick={() => onAddToCart(product)} className="flex-grow bg-editorial-text hover:bg-editorial-text/90 text-editorial-bg font-bold text-xs py-4 px-6 rounded-xl cursor-pointer duration-200 uppercase tracking-widest font-mono">Configure & Add To Basket</button>
-                <button onClick={() => onToggleFavorite(product)} className={`flex items-center justify-center w-12.5 h-12.5 rounded-xl border transition-all duration-200 cursor-pointer ${isFavorite ? "bg-red-500 border-red-500 text-white hover:bg-red-650" : "bg-transparent border-editorial-text/20 text-editorial-text hover:bg-editorial-accent/20 hover:border-editorial-text"}`}>
-                  <Heart className={`w-5 h-5 ${isFavorite ? "fill-white" : ""}`} />
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-editorial-paper rounded-2xl border border-editorial-text/15 p-6 md:p-8 space-y-6 shadow-none">
-            <div className="flex items-baseline justify-between border-b border-editorial-text/15 pb-4">
-              <h3 className="text-xs font-bold text-editorial-text uppercase tracking-widest font-mono">Customer Assessment</h3>
-              <p className="text-[10px] text-editorial-text/50 font-sans uppercase tracking-wider font-semibold">Continuous verification</p>
-            </div>
-
-            <form onSubmit={handleSubmitReview} className="space-y-3 border border-editorial-text/10 bg-editorial-bg/60 p-4 rounded-2xl">
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <p className="text-[10px] uppercase tracking-widest font-mono text-editorial-text/60">Submit verified review</p>
-                <select value={reviewRating} onChange={(e) => setReviewRating(Number(e.target.value))} className="border border-editorial-text/15 bg-white px-3 py-2 text-xs">
-                  {[5, 4, 3, 2, 1].map((value) => <option key={value} value={value}>{value} stars</option>)}
-                </select>
-              </div>
-              <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} required minLength={3} placeholder={authSession?.user.role === "customer" ? "Share how the product performed after purchase..." : "Sign in as a customer to submit a verified review."} className="w-full min-h-28 border border-editorial-text/15 bg-white px-4 py-3 text-xs focus:outline-none focus:border-editorial-text" disabled={reviewBusy || authSession?.user.role !== "customer"} />
-              {reviewError && <div className="rounded-xl border border-red-300/70 bg-red-50 px-4 py-3 text-xs text-red-800">{reviewError}</div>}
-              <button type="submit" disabled={reviewBusy || authSession?.user.role !== "customer" || !reviewComment.trim()} className="border border-editorial-text bg-editorial-text px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-editorial-bg disabled:opacity-50 disabled:cursor-not-allowed">{reviewBusy ? "Submitting" : "Publish Review"}</button>
-            </form>
-
-            <div className="divide-y divide-editorial-text/10">
-              {product.reviews.length === 0 ? (
-                <p className="py-4 text-xs text-editorial-text/60">No published reviews yet.</p>
-              ) : product.reviews.map((review) => (
-                <div key={review.id} className="py-4 first:pt-2 last:pb-2 space-y-2">
-                  <div className="flex items-center justify-between flex-wrap gap-2 text-[11px] font-sans text-editorial-text">
-                    <div>
-                      <span className="font-bold">{review.author}</span>
-                      <span className="text-editorial-text/20 mx-1.5">•</span>
-                      <span className="text-editorial-text/60">{review.date}</span>
-                    </div>
-                    <div className="flex items-center gap-0.5">
-                      {[1, 2, 3, 4, 5].map((value) => (
-                        <Star key={value} className={`w-3 h-3 ${value <= review.rating ? "text-editorial-text fill-editorial-text opacity-95" : "text-editorial-text/15"}`} />
-                      ))}
-                    </div>
-                  </div>
-                  <p className="text-xs md:text-sm text-editorial-text/80 leading-relaxed font-sans">{review.text}</p>
+              <div className="mt-5 rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-editorial-text/45">Checkout actions</p>
+                <div className="mt-4 flex gap-3">
+                  <button onClick={() => onAddToCart(product)} className="flex-1 rounded-2xl bg-white px-4 py-3.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-100">
+                    Add to cart
+                  </button>
+                  <button onClick={() => onToggleFavorite(product)} className={`flex h-12 w-12 items-center justify-center rounded-2xl border transition ${isFavorite ? "border-rose-400/25 bg-rose-400/12 text-rose-300" : "border-white/10 bg-white/[0.03] text-editorial-text/74 hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-editorial-text"}`}>
+                    <Heart className={`h-5 w-5 ${isFavorite ? "fill-current" : ""}`} />
+                  </button>
                 </div>
-              ))}
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </aside>
     </div>
   );
 }

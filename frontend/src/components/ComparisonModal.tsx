@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, Scale, Sparkles, Loader2, RefreshCw, AlertCircle } from "lucide-react";
+import { AlertCircle, Loader2, Scale, Sparkles, X } from "lucide-react";
 import { Product } from "../types";
 import MarkdownRenderer from "./MarkdownRenderer";
 
@@ -11,18 +11,11 @@ interface ComparisonModalProps {
   onSelectProduct: (product: Product) => void;
 }
 
-export default function ComparisonModal({
-  products,
-  onRemove,
-  onClose,
-  allProducts,
-  onSelectProduct
-}: ComparisonModalProps) {
+export default function ComparisonModal({ products, onRemove, onClose, allProducts, onSelectProduct }: ComparisonModalProps) {
   const [aiReport, setAiReport] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Grab the first two compared products
   const productA = products[0];
   const productB = products[1];
 
@@ -36,9 +29,7 @@ export default function ComparisonModal({
     try {
       const res = await fetch("/api/product-compare", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ productA, productB }),
       });
 
@@ -56,250 +47,117 @@ export default function ComparisonModal({
     }
   };
 
-  // Find other items to compare if we haven't reached limits
   const unusedProducts = allProducts.filter((p) => !products.some((curr) => curr.id === p.id));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4">
-      {/* Click outside dismisses modal */}
-      <div className="absolute inset-0 -z-10" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-md">
+      <div className="absolute inset-0" onClick={onClose} />
 
-      {/* Main Container */}
-      <div className="w-full max-w-5xl max-h-[90vh] rounded-3xl bg-editorial-bg border border-editorial-text/25 flex flex-col shadow-xl overflow-hidden animate-in zoom-in-95 duration-200">
-        
-        {/* Header Bar */}
-        <div className="bg-editorial-paper px-6 py-4 border-b border-editorial-text/15 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-editorial-bg border border-editorial-text/15 text-editorial-text">
-              <Scale className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="serif text-base font-bold text-editorial-text">Comparison Board</h2>
-              <p className="text-[9px] uppercase tracking-wider font-mono text-editorial-text/60">Side-by-side electronic analysis & AI Synthesis</p>
-            </div>
+      <div className="relative z-10 flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(8,13,27,0.96),rgba(6,9,20,0.96))] shadow-[0_30px_100px_rgba(2,6,23,0.75)]">
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/45">Comparison board</p>
+            <h2 className="mt-1 text-xl font-semibold text-editorial-text">AI-assisted tradeoff view</h2>
           </div>
-          
-          <button
-            onClick={onClose}
-            className="flex items-center justify-center w-8 h-8 rounded-full border border-editorial-text/15 text-editorial-text/60 hover:bg-editorial-text hover:text-editorial-bg transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
+          <button onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-editorial-text/60 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-editorial-text">
+            <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Content Box */}
-        <div className="flex-grow overflow-y-auto p-5 md:p-8 space-y-8">
-          
+        <div className="overflow-y-auto p-6 md:p-8">
           {products.length === 0 ? (
-            <div className="text-center py-12 space-y-4">
-              <Scale className="w-10 h-10 text-editorial-text/30 mx-auto" />
-              <div className="space-y-1">
-                <p className="serif text-base font-bold text-editorial-text">Board is Empty</p>
-                <p className="text-xs text-editorial-text/60 font-sans max-w-sm mx-auto">Add devices on the main homepage to compare specs side by side.</p>
-              </div>
-              <button
-                onClick={onClose}
-                className="text-[10px] uppercase font-bold tracking-widest bg-editorial-text text-editorial-bg rounded-full px-6 py-2.5 transition-colors cursor-pointer"
-              >
-                Go Back Shop
-              </button>
+            <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-16 text-center">
+              <Scale className="mx-auto h-10 w-10 text-editorial-text/30" />
+              <h3 className="mt-5 text-2xl font-semibold text-editorial-text">No products queued for comparison</h3>
+              <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-editorial-text/55">Add up to two products from the grid to compare price, specs, and AI recommendations side by side.</p>
             </div>
           ) : (
-            <div className="space-y-8">
-              
-              {/* Product cards side-by-side comparison matrix */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                
-                {/* Column Product 1 */}
-                <div className="bg-editorial-paper rounded-2xl border border-editorial-text/15 p-5 relative overflow-hidden">
-                  <div className="absolute top-4 right-4 z-10">
-                    <button
-                      onClick={() => onRemove(productA)}
-                      className="text-[9px] uppercase font-mono font-bold bg-editorial-paper text-editorial-text/60 hover:text-red-550 hover:border-red-650 border border-editorial-text/15 px-2.5 py-1.5 rounded-full transition-all duration-150 cursor-pointer"
-                    >
-                      Delete
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-lg border border-editorial-text/10 overflow-hidden shrink-0">
-                      <img src={productA.image} alt={productA.name} className="w-full h-full object-cover" />
-                    </div>
-                    <div>
-                      <span className="text-[9px] font-bold text-editorial-text/60 uppercase font-mono tracking-wider">{productA.category}</span>
-                      <h3 className="serif text-base font-bold text-editorial-text leading-tight">{productA.name}</h3>
-                      <p className="text-base font-bold text-editorial-text font-mono mt-0.5">${productA.price}</p>
-                    </div>
-                  </div>
-
-                  {/* Quick specs snippet */}
-                  <div className="mt-5 space-y-2 divide-y divide-editorial-text/10 text-xs text-editorial-text font-sans">
-                    <div className="flex justify-between py-1.5 pt-0">
-                      <span className="opacity-60">Status Rating</span>
-                      <span className="font-semibold">★ {productA.rating} ({productA.reviewsCount})</span>
-                    </div>
-                    <div className="flex justify-between py-1.5">
-                      <span className="opacity-60">Core Attribute</span>
-                      <span className="font-semibold text-right max-w-[65%] truncate">{productA.features[0]}</span>
-                    </div>
-                    {productA.specs.slice(0, 3).map((spec, sIdx) => (
-                      <div key={sIdx} className="flex justify-between py-1.5">
-                        <span className="opacity-60">{spec.label}</span>
-                        <span className="font-semibold text-right max-w-[65%] truncate font-mono text-[11px]">{spec.value}</span>
+            <div className="space-y-6">
+              <div className="grid gap-6 lg:grid-cols-2">
+                {[productA, productB].map((product, index) => product ? (
+                  <div key={product.id} className="rounded-[28px] border border-white/10 bg-white/[0.03] p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex gap-4">
+                        <div className="h-20 w-20 overflow-hidden rounded-[20px] border border-white/10 bg-slate-950/40">
+                          <img src={product.image} alt={product.name} className="h-full w-full object-cover" />
+                        </div>
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-editorial-text/45">{product.category}</p>
+                          <h3 className="mt-1 text-lg font-semibold text-editorial-text">{product.name}</h3>
+                          <p className="mt-2 text-xl font-semibold text-editorial-text">${product.price}</p>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </div>                {/* Column Product 2 */}
-                {productB ? (
-                  <div className="bg-editorial-paper rounded-2xl border border-editorial-text/15 p-5 relative overflow-hidden animate-in slide-in-from-right-10 duration-200">
-                    <div className="absolute top-4 right-4 z-10">
-                      <button
-                        onClick={() => onRemove(productB)}
-                        className="text-[9px] uppercase font-mono font-bold bg-editorial-paper text-editorial-text/60 hover:text-red-550 hover:border-red-650 border border-editorial-text/15 px-2.5 py-1.5 rounded-full transition-all duration-150 cursor-pointer"
-                      >
-                        Delete
+                      <button onClick={() => onRemove(product)} className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-editorial-text/70 transition hover:border-red-400/25 hover:bg-red-500/10 hover:text-red-200">
+                        Remove
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-4">
-                      <div className="w-16 h-16 rounded-lg border border-editorial-text/10 overflow-hidden shrink-0">
-                        <img src={productB.image} alt={productB.name} className="w-full h-full object-cover" />
+                    <div className="mt-5 rounded-[24px] border border-white/10 bg-slate-950/35 p-4">
+                      <div className="space-y-3 text-sm text-editorial-text/68">
+                        <div className="flex justify-between gap-3"><span>Rating</span><span className="font-semibold text-editorial-text">{product.rating} / 5</span></div>
+                        <div className="flex justify-between gap-3"><span>Reviews</span><span className="font-semibold text-editorial-text">{product.reviewsCount}</span></div>
+                        <div className="flex justify-between gap-3"><span>Brand</span><span className="font-semibold text-editorial-text">{product.brand || "TechShop"}</span></div>
+                        {product.specs.slice(0, 3).map((spec, idx) => (
+                          <div key={idx} className="flex justify-between gap-3"><span>{spec.label}</span><span className="max-w-[55%] text-right font-semibold text-editorial-text">{spec.value}</span></div>
+                        ))}
                       </div>
-                      <div>
-                        <span className="text-[9px] font-bold text-editorial-text/60 uppercase font-mono tracking-wider">{productB.category}</span>
-                        <h3 className="serif text-base font-bold text-editorial-text leading-tight">{productB.name}</h3>
-                        <p className="text-base font-bold text-editorial-text font-mono mt-0.5">${productB.price}</p>
-                      </div>
-                    </div>
-
-                    {/* Quick specs snippet */}
-                    <div className="mt-5 space-y-2 divide-y divide-editorial-text/10 text-xs text-editorial-text font-sans">
-                      <div className="flex justify-between py-1.5 pt-0">
-                        <span className="opacity-60">Status Rating</span>
-                        <span className="font-semibold">★ {productB.rating} ({productB.reviewsCount})</span>
-                      </div>
-                      <div className="flex justify-between py-1.5">
-                        <span className="opacity-60">Core Attribute</span>
-                        <span className="font-semibold text-right max-w-[65%] truncate">{productB.features[0]}</span>
-                      </div>
-                      {productB.specs.slice(0, 3).map((spec, sIdx) => (
-                        <div key={sIdx} className="flex justify-between py-1.5">
-                          <span className="opacity-60">{spec.label}</span>
-                          <span className="font-semibold text-right max-w-[65%] truncate font-mono text-[11px]">{spec.value}</span>
-                        </div>
-                      ))}
                     </div>
                   </div>
                 ) : (
-                  <div className="border border-dashed border-editorial-text/20 bg-editorial-accent/30 rounded-2xl flex flex-col justify-center items-center p-6 text-center space-y-3">
-                    <Scale className="w-6 h-6 text-editorial-text/45" />
-                    <div className="space-y-1">
-                      <p className="serif text-xs font-bold text-editorial-text">Aligning Companion Unit</p>
-                      <p className="text-[10px] text-editorial-text/60 max-w-[200px] leading-relaxed mx-auto font-sans">Select a second product on the homepage catalog to run smart generative comparisons.</p>
-                    </div>
-
+                  <div key={`placeholder-${index}`} className="rounded-[28px] border border-dashed border-white/12 bg-white/[0.02] p-8 text-center">
+                    <Scale className="mx-auto h-8 w-8 text-editorial-text/30" />
+                    <h3 className="mt-4 text-xl font-semibold text-editorial-text">Add a second product</h3>
+                    <p className="mx-auto mt-3 max-w-xs text-sm leading-6 text-editorial-text/55">Pick another device to unlock side-by-side comparison and AI recommendations.</p>
                     {unusedProducts.length > 0 && (
-                      <div className="w-full max-w-[240px] pt-1">
-                        <select
-                          onChange={(e) => {
-                            const found = allProducts.find((p) => p.id === e.target.value);
-                            if (found) onSelectProduct(found);
-                          }}
-                          defaultValue=""
-                          className="w-full bg-editorial-paper text-xs border border-editorial-text/15 hover:border-editorial-text/30 focus:border-editorial-text focus:outline-none rounded-xl p-2 font-mono text-editorial-text"
-                        >
-                          <option value="" disabled>-- Quick Add Product --</option>
-                          {unusedProducts.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} (${p.price})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      <select onChange={(e) => { const found = allProducts.find((p) => p.id === e.target.value); if (found) onSelectProduct(found); }} defaultValue="" className="mt-5 w-full rounded-2xl border border-white/10 bg-slate-950/50 px-4 py-3 text-sm text-editorial-text outline-none">
+                        <option value="" disabled>Select a product</option>
+                        {unusedProducts.map((p) => <option key={p.id} value={p.id}>{p.name} (${p.price})</option>)}
+                      </select>
                     )}
                   </div>
-                )}
-
+                ))}
               </div>
 
-              {/* AI Generative report card */}
               {productA && productB && (
-                <div className="bg-editorial-paper rounded-2xl border border-editorial-text/15 p-6 space-y-6">
-                  
-                  {/* Trigger banner */}
-                  <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 bg-editorial-accent/30 border border-editorial-text/15 p-5 rounded-xl">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2 text-editorial-text">
-                        <Sparkles className="w-4 h-4 opacity-80" />
-                        <h4 className="text-[10px] font-bold uppercase tracking-widest font-mono">Generative Comparison Reports</h4>
+                <div className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6">
+                  <div className="flex flex-col gap-4 rounded-[24px] border border-cyan-400/15 bg-[linear-gradient(180deg,rgba(76,130,255,0.12),rgba(85,214,255,0.04))] p-5 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2 text-cyan-100">
+                        <Sparkles className="h-4 w-4" />
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.2em]">AI comparison summary</p>
                       </div>
-                      <p className="text-xs text-editorial-text/70 leading-relaxed max-w-[500px] font-sans">
-                        Consult speculative model advisories to produce an exhaustive relative evaluation: analyzing budget weight, hardware trade-offs, and target lifestyle synthesis out of the box.
-                      </p>
+                      <p className="mt-2 max-w-2xl text-sm leading-6 text-editorial-text/72">Generate a narrative comparison covering value, strengths, tradeoffs, and buyer fit for the current two-product shortlist.</p>
                     </div>
-
-                    <button
-                      onClick={handleGenerateAIReport}
-                      disabled={loading}
-                      className="bg-editorial-text hover:bg-editorial-text/90 text-editorial-bg font-bold text-[10px] px-6 py-3.5 rounded-full flex items-center justify-center gap-2 tracking-widest font-mono uppercase cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shrink-0"
-                    >
-                      {loading ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-editorial-bg" />
-                          <span>Generating Synthesis...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-3.5 h-3.5 text-editorial-bg" />
-                          <span>Generate AI Spec Reports</span>
-                        </>
-                      )}
+                    <button onClick={handleGenerateAIReport} disabled={loading} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-50">
+                      {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      Generate report
                     </button>
                   </div>
 
-                  {/* Loading micro notes */}
                   {loading && (
-                    <div className="py-8 text-center space-y-3 animate-pulse">
-                      <Loader2 className="w-6 h-6 text-editorial-text animate-spin mx-auto" />
-                      <div className="space-y-1">
-                        <p className="text-[10px] font-bold text-editorial-text font-mono tracking-widest uppercase">Loading Neural Review</p>
-                        <p className="text-[10px] text-editorial-text/50 font-sans italic">"Formulating decision matrix and syncing comparative indices..."</p>
-                      </div>
+                    <div className="py-10 text-center">
+                      <Loader2 className="mx-auto h-6 w-6 animate-spin text-cyan-300" />
+                      <p className="mt-3 text-sm text-editorial-text/55">Building the comparison narrative...</p>
                     </div>
                   )}
 
-                  {/* Error Panel */}
                   {error && (
-                    <div className="p-4 bg-red-50/50 border border-red-200/60 text-red-800 rounded-xl flex items-start gap-2.5 text-xs">
-                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-                      <div className="space-y-1">
-                        <p className="font-bold serif text-red-900">Review Generation Suspended</p>
-                        <p className="text-red-700 font-sans opacity-95">{error}</p>
-                      </div>
+                    <div className="mt-5 flex items-start gap-3 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                      <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
+                      <p>{error}</p>
                     </div>
                   )}
 
-                  {/* Comparative report markdown show */}
                   {aiReport && (
-                    <div className="space-y-4 animate-in fade-in duration-300">
-                      <div className="flex items-center gap-2 border-b border-editorial-text/15 pb-3">
-                        <div className="w-1.5 h-1.5 bg-editorial-text shrink-0" />
-                        <h4 className="text-[10px] font-bold text-editorial-text/60 uppercase tracking-widest font-mono">Gemini AI Intelligence Dispatch</h4>
-                      </div>
-                      <div className="bg-editorial-bg rounded-xl border border-editorial-text/15 p-6 font-sans text-editorial-text">
-                        <MarkdownRenderer content={aiReport} />
-                      </div>
+                    <div className="mt-5 rounded-[24px] border border-white/10 bg-slate-950/45 p-5 text-sm leading-7 text-editorial-text/74">
+                      <MarkdownRenderer content={aiReport} />
                     </div>
                   )}
-
                 </div>
               )}
-
             </div>
           )}
-
         </div>
-
       </div>
     </div>
   );

@@ -8,9 +8,77 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
+const API_GATEWAY_URL = (process.env.API_GATEWAY_URL || process.env.VITE_API_GATEWAY_URL || "http://localhost:1912").replace(/\/$/, "");
+
+const proxiedApiPrefixes = [
+  "/api/auth",
+  "/api/admin",
+  "/api/catalog",
+  "/api/cart",
+  "/api/orders",
+  "/api/payments",
+  "/api/reviews",
+  "/api/shipping",
+];
 
 // Parse JSON bodies
 app.use(express.json());
+
+app.use(async (req, res, next) => {
+  const shouldProxy = proxiedApiPrefixes.some((prefix) => req.path.startsWith(prefix));
+  if (!shouldProxy) {
+    next();
+    return;
+  }
+
+  const targetUrl = `${API_GATEWAY_URL}${req.originalUrl}`;
+
+  try {
+    const headers = new Headers();
+    Object.entries(req.headers).forEach(([key, value]) => {
+      if (!value || ["host", "content-length", "connection"].includes(key)) {
+        return;
+      }
+      if (Array.isArray(value)) {
+        headers.set(key, value.join(", "));
+        return;
+      }
+      headers.set(key, value);
+    });
+
+    const body = req.method === "GET" || req.method === "HEAD"
+      ? undefined
+      : req.headers["content-type"]?.includes("application/json")
+        ? JSON.stringify(req.body)
+        : undefined;
+
+    const response = await fetch(targetUrl, {
+      method: req.method,
+      headers,
+      body,
+    });
+
+    res.status(response.status);
+    response.headers.forEach((value, key) => {
+      if (["content-encoding", "transfer-encoding", "connection"].includes(key)) {
+        return;
+      }
+      res.setHeader(key, value);
+    });
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    res.send(buffer);
+  } catch (error: any) {
+    console.error(`Proxy error for ${targetUrl}:`, error);
+    res.status(502).json({
+      success: false,
+      error: {
+        code: "BAD_GATEWAY",
+        message: error?.message || "Failed to reach backend gateway.",
+      },
+    });
+  }
+});
 
 // Initialize Gemini SDK lazily, as instructed in Guidelines (fails gracefully on missing key)
 let aiClient: GoogleGenAI | null = null;

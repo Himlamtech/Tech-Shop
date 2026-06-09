@@ -1,5 +1,5 @@
 import React from "react";
-import { X, Heart, ShoppingBag, Trash2 } from "lucide-react";
+import { Heart, ShoppingBag, Trash2, X } from "lucide-react";
 import { Product } from "../types";
 
 interface FavoritesProps {
@@ -9,120 +9,66 @@ interface FavoritesProps {
   onClose: () => void;
 }
 
-export default function Favorites({
-  items,
-  onRemoveFavorite,
-  onAddToCart,
-  onClose,
-}: FavoritesProps) {
+export default function Favorites({ items, onRemoveFavorite, onAddToCart, onClose }: FavoritesProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-end bg-editorial-text/45 backdrop-blur-sm p-0 sm:p-4">
-      {/* Click outside to close */}
-      <div className="absolute inset-0 -z-10" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-end bg-slate-950/70 p-0 md:p-4 backdrop-blur-md">
+      <div className="absolute inset-0" onClick={onClose} />
 
-      {/* Main Drawer Shell with soft corners */}
-      <div className="w-full max-w-md h-full md:h-[95vh] rounded-none md:rounded-2xl bg-editorial-bg border border-editorial-text/20 flex flex-col shadow-2xl overflow-hidden animate-in slide-in-from-right duration-300">
-        
-        {/* Header Block with rounded button */}
-        <div className="px-6 py-5 border-b border-editorial-text/15 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Heart className="w-4.5 h-4.5 text-red-500 fill-red-500 shrink-0" />
-            <h2 className="serif text-lg font-bold text-editorial-text">My Wishlist</h2>
+      <div className="relative z-10 flex h-full w-full max-w-md flex-col overflow-hidden rounded-none border-l border-white/10 bg-[linear-gradient(180deg,rgba(8,13,27,0.96),rgba(6,9,20,0.96))] shadow-[0_30px_100px_rgba(2,6,23,0.75)] md:h-[95vh] md:rounded-[32px] md:border">
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-5">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/45">Saved list</p>
+            <h2 className="mt-1 text-xl font-semibold text-editorial-text">Favorites</h2>
           </div>
-
-          <button
-            onClick={onClose}
-            className="flex items-center justify-center w-8 h-8 rounded-full hover:bg-editorial-accent/35 border border-editorial-text/15 text-editorial-text transition-colors cursor-pointer"
-          >
-            <X className="w-4 h-4" />
+          <button onClick={onClose} className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-editorial-text/60 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-editorial-text">
+            <X className="h-4 w-4" />
           </button>
         </div>
 
-        {/* Scrollable list */}
-        <div className="flex-grow flex flex-col overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col">
           {items.length === 0 ? (
-            <div className="flex-grow flex flex-col justify-center items-center p-8 text-center space-y-5">
-              <div className="w-16 h-16 rounded-2xl bg-editorial-paper flex items-center justify-center border border-editorial-text/15">
-                <Heart className="w-6 h-6 text-editorial-text/30" />
+            <div className="flex flex-1 flex-col items-center justify-center p-8 text-center">
+              <div className="flex h-20 w-20 items-center justify-center rounded-[28px] border border-white/10 bg-white/[0.03]">
+                <Heart className="h-8 w-8 text-editorial-text/30" />
               </div>
-              <div className="space-y-1">
-                <p className="serif text-base font-bold text-editorial-text">Wishlist is empty</p>
-                <p className="text-xs text-editorial-text/60 max-w-[240px] leading-relaxed">
-                  Save your favorite futuristic gadgets here to compare or order them later.
-                </p>
-              </div>
-              <button
-                onClick={onClose}
-                className="text-[10px] uppercase tracking-wider font-bold bg-editorial-text text-editorial-bg rounded-full px-5 py-3 border border-editorial-text hover:bg-transparent hover:text-editorial-text transition-colors duration-250 cursor-pointer"
-              >
-                Explore Catalog
+              <h3 className="mt-6 text-2xl font-semibold text-editorial-text">No saved products yet</h3>
+              <p className="mt-3 max-w-xs text-sm leading-6 text-editorial-text/55">Save standout devices here while you compare, research, or build a future cart.</p>
+              <button onClick={onClose} className="mt-6 rounded-full border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-semibold text-editorial-text transition hover:border-cyan-400/30 hover:bg-cyan-400/10">
+                Browse products
               </button>
             </div>
           ) : (
-            <div className="flex-grow overflow-y-auto p-6 space-y-4">
-              {items.map((product) => (
-                <div
-                  key={product.id}
-                  className="flex gap-4 p-4 rounded-xl bg-editorial-paper border border-editorial-text/10 hover:border-editorial-text/25 transition-all duration-200 animate-in fade-in"
-                >
-                  {/* Image thumbnail preview with soft corners */}
-                  <div className="w-16 h-16 rounded-lg border border-editorial-text/15 overflow-hidden shrink-0 bg-editorial-bg">
-                    <img
-                      src={product.image}
-                      alt={product.name}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover opacity-95"
-                    />
-                  </div>
-
-                  {/* Context block */}
-                  <div className="flex-grow min-w-0">
-                    <p className="text-[8px] font-bold text-editorial-text/50 uppercase tracking-widest font-mono">
-                      {product.category}
-                    </p>
-                    <h4 className="serif text-xs font-bold text-editorial-text truncate">
-                      {product.name}
-                    </h4>
-                    <p className="text-xs font-bold text-editorial-text font-mono mt-0.5">
-                      ${product.price}
-                    </p>
-
-                    {/* Action buttons inside item card */}
-                    <div className="flex items-center gap-2 mt-2">
-                      <button
-                        onClick={() => {
-                          onAddToCart(product);
-                          // Optionally keep or close
-                        }}
-                        className="flex items-center gap-1 bg-editorial-text hover:bg-editorial-text/90 text-editorial-bg font-semibold text-[9px] uppercase tracking-widest px-3 py-1.5 rounded-full transition-all duration-150 cursor-pointer"
-                      >
-                        <ShoppingBag className="w-3 h-3" />
-                        <span>Add To Basket</span>
+            <>
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-6">
+                {items.map((product) => (
+                  <div key={product.id} className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
+                    <div className="flex gap-4">
+                      <div className="h-20 w-20 overflow-hidden rounded-[20px] border border-white/10 bg-slate-950/40">
+                        <img src={product.image} alt={product.name} referrerPolicy="no-referrer" className="h-full w-full object-cover" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-editorial-text/45">{product.category}</p>
+                        <h4 className="mt-1 text-sm font-semibold text-editorial-text">{product.name}</h4>
+                        <p className="mt-1 text-base font-semibold text-editorial-text">${product.price}</p>
+                        <button onClick={() => onAddToCart(product)} className="mt-3 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-100">
+                          <ShoppingBag className="h-4 w-4" />
+                          Add to cart
+                        </button>
+                      </div>
+                      <button onClick={() => onRemoveFavorite(product)} className="flex h-9 w-9 items-center justify-center rounded-2xl border border-white/8 bg-white/[0.03] text-editorial-text/50 transition hover:border-red-400/25 hover:bg-red-500/10 hover:text-red-200" title="Remove from favorites">
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
+                ))}
+              </div>
 
-                  {/* Remove buttons with soft circle outline */}
-                  <button
-                    onClick={() => onRemoveFavorite(product)}
-                    className="h-8 w-8 text-red-550 hover:text-red-650 hover:bg-red-50 hover:border-red-200 border border-transparent rounded-full flex items-center justify-center shrink-0 self-center transition-all cursor-pointer"
-                    title="Remove from favorites list"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
+              <div className="border-t border-white/10 bg-slate-950/35 px-6 py-4 text-center text-[11px] uppercase tracking-[0.18em] text-editorial-text/38">
+                {items.length} saved product{items.length > 1 ? "s" : ""} ready for compare or checkout
+              </div>
+            </>
           )}
         </div>
-
-        {/* Footer info message */}
-        {items.length > 0 && (
-          <div className="bg-editorial-accent/25 border-t border-editorial-text/15 p-5 text-center text-[9px] text-editorial-text/50 font-mono tracking-wider max-w-sm mx-auto">
-            YOU HAVE saved {items.length} CURATED DESIGNS FOR CONVENIENT COMPILATION.
-          </div>
-        )}
-
       </div>
     </div>
   );

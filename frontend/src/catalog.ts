@@ -129,11 +129,20 @@ export async function fetchCategories() {
 }
 
 export async function fetchCatalogProducts() {
-  const listResponse = await fetch(buildCatalogUrl("/products/?page_size=100"));
-  const { data: list } = await parseApiResponse<CatalogProductListItem[]>(listResponse);
+  const aggregated: CatalogProductListItem[] = [];
+  let page = 1;
+  let totalPages = 1;
+
+  while (page <= totalPages) {
+    const listResponse = await fetch(buildCatalogUrl(`/products/?page=${page}&page_size=50`));
+    const { data, meta } = await parseApiResponse<CatalogProductListItem[]>(listResponse);
+    aggregated.push(...data);
+    totalPages = meta?.pagination?.total_pages || 1;
+    page += 1;
+  }
 
   const detailedProducts = await Promise.all(
-    list.map(async (product) => {
+    aggregated.map(async (product) => {
       const detailResponse = await fetch(buildCatalogUrl(`/products/${product.id}/`));
       const { data: detail } = await parseApiResponse<CatalogProductDetail>(detailResponse);
       return buildProduct(detail);

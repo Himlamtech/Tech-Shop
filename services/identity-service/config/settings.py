@@ -40,6 +40,10 @@ INSTALLED_APPS = [
     "apps.identity",
 ]
 
+MIGRATION_MODULES = {
+    "identity": "apps.identity_migrations",
+}
+
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "apps.core.middleware.RequestIDMiddleware",
@@ -120,6 +124,11 @@ JWT_ISSUER = os.environ.get("JWT_ISSUER", "techshop.identity")
 JWT_ALGORITHM = "RS256"
 JWT_ACCESS_TOKEN_LIFETIME_MINUTES = int(os.environ.get("JWT_ACCESS_TOKEN_LIFETIME_MINUTES", "15"))
 JWT_REFRESH_TOKEN_LIFETIME_DAYS = int(os.environ.get("JWT_REFRESH_TOKEN_LIFETIME_DAYS", "7"))
+
+# Firebase Authentication
+FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "")
+FIREBASE_CLIENT_EMAIL = os.environ.get("FIREBASE_CLIENT_EMAIL", "")
+FIREBASE_PRIVATE_KEY = os.environ.get("FIREBASE_PRIVATE_KEY", "").replace("\\n", "\n")
 
 # Service URLs
 IDENTITY_SERVICE_URL = os.environ.get("IDENTITY_SERVICE_URL", "http://identity-service:8001")

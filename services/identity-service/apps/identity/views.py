@@ -20,12 +20,13 @@ from apps.core.responses import error_response, success_response
 from apps.identity.models import User
 from apps.identity.serializers import (
     AdminUserUpdateSerializer,
+    FirebaseAuthSerializer,
     LoginSerializer,
     LogoutSerializer,
     RefreshSerializer,
     RegisterSerializer,
 )
-from apps.identity.services import AccountLockedError, AuthService
+from apps.identity.services import AccountLockedError, AuthService, FirebaseAuthenticationError
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,49 @@ class LoginView(APIView):
                 code="UNAUTHORIZED",
                 message=e.message,
                 status=401,
+            )
+
+        return success_response(data=result)
+
+
+class FirebaseLoginView(APIView):
+    """Exchange a Firebase ID token for TechShop tokens."""
+
+    authentication_classes = []
+    permission_classes = []
+
+    def post(self, request):
+        serializer = FirebaseAuthSerializer(data=request.data)
+        if not serializer.is_valid():
+            return error_response(
+                code="VALIDATION_ERROR",
+                message="Invalid Firebase authentication data.",
+                details=_format_serializer_errors(serializer.errors),
+                status=422,
+            )
+
+        try:
+            result = AuthService.login_with_firebase(
+                id_token=serializer.validated_data["id_token"],
+            )
+        except FirebaseAuthenticationError as e:
+            return error_response(
+                code="FIREBASE_AUTH_FAILED",
+                message=str(e),
+                status=401,
+            )
+        except UnauthorizedError as e:
+            return error_response(
+                code="UNAUTHORIZED",
+                message=e.message,
+                status=401,
+            )
+        except ValidationError as e:
+            return error_response(
+                code="VALIDATION_ERROR",
+                message=e.message,
+                details=e.details,
+                status=422,
             )
 
         return success_response(data=result)

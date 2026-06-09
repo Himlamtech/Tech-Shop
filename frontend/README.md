@@ -15,6 +15,9 @@ View your app in AI Studio: https://ai.studio/apps/63c3df9f-852d-4ef8-bea7-45d59
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Set the `GEMINI_API_KEY` in `.env.local` if you want live AI responses.
+3. Set `API_GATEWAY_URL=http://localhost:1912` in `.env.local` when the backend stack is exposed through the gateway on port `1912`.
+4. Run the app:
    `npm run dev`
+
+The frontend dev server proxies `/api/auth`, `/api/catalog`, `/api/cart`, `/api/orders`, `/api/payments`, `/api/reviews`, and `/api/admin` to `API_GATEWAY_URL`.

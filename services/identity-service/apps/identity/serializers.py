@@ -55,6 +55,12 @@ class LogoutSerializer(serializers.Serializer):
     refresh_token = serializers.CharField()
 
 
+class FirebaseAuthSerializer(serializers.Serializer):
+    """Validates Firebase authentication exchange input."""
+
+    id_token = serializers.CharField(write_only=True)
+
+
 class UserResponseSerializer(serializers.Serializer):
     """Serializes user data for token responses."""
 

@@ -1,4 +1,20 @@
 import React, { useEffect, useMemo, useState } from "react";
+import type { ConfirmationResult } from "firebase/auth";
+import { AnimatePresence, motion } from "motion/react";
+import {
+  AlertCircle,
+  ArrowRight,
+  BrainCircuit,
+  CheckCircle2,
+  Filter,
+  LogIn,
+  LogOut,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+} from "lucide-react";
 import Navbar from "./components/Navbar";
 import ProductCard from "./components/ProductCard";
 import ProductDetails from "./components/ProductDetails";
@@ -8,10 +24,19 @@ import Cart from "./components/Cart";
 import Favorites from "./components/Favorites";
 import AuthDialog from "./components/AuthDialog";
 import AdminPanel from "./components/AdminPanel";
-import { authenticate, loadStoredSession, logoutSession, persistSession } from "./auth";
+import {
+  authenticate,
+  authenticateWithGoogle,
+  clearFirebaseClientSession,
+  completePhoneSignIn,
+  loadStoredSession,
+  logoutSession,
+  persistSession,
+  restoreSession,
+  startPhoneSignIn,
+} from "./auth";
 import { deleteAdminReview, fetchAdminDashboard, fetchAdminPayments, fetchAdminReviews, fetchAdminUserDetail, fetchAdminUsers, updateAdminUser } from "./admin";
 import { AdminDashboardData, AdminPaymentRecord, AdminReviewRecord, AdminUserRecord, AuthSession, CartItem, CategoryNode, Product } from "./types";
-import { Search, Sparkles, RefreshCw, AlertCircle, LogIn, LogOut } from "lucide-react";
 import { fetchCatalogProducts, fetchCategories, fetchProductDetail } from "./catalog";
 import { addRemoteCartItem, clearRemoteCart, fetchRemoteCart, removeRemoteCartItem, updateRemoteCartItem } from "./cart";
 import { checkoutOrder } from "./orders";
@@ -24,6 +49,29 @@ function flattenCategories(categories: CategoryNode[], bag: string[] = []): stri
     }
   });
   return bag;
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function getAiSpotlight(products: Product[]) {
+  if (products.length === 0) {
+    return [];
+  }
+
+  const byRating = [...products].sort((a, b) => (b.rating * 10 + b.reviewsCount) - (a.rating * 10 + a.reviewsCount));
+  const byPrice = [...products].sort((a, b) => a.price - b.price);
+
+  return [
+    { label: "Top Rated", value: byRating[0]?.name ?? "Syncing", meta: `${byRating[0]?.rating ?? 0}/5 signal` },
+    { label: "Best Entry", value: byPrice[0]?.name ?? "Syncing", meta: byPrice[0] ? formatCurrency(byPrice[0].price) : "Catalog loading" },
+    { label: "Live Catalog", value: `${products.length}`, meta: "AI-ranked devices" },
+  ];
 }
 
 export default function App() {
@@ -41,6 +89,7 @@ export default function App() {
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [phoneConfirmation, setPhoneConfirmation] = useState<ConfirmationResult | null>(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
@@ -62,6 +111,8 @@ export default function App() {
   const isCustomerSession = authSession?.user.role === "customer";
 
   useEffect(() => {
+    let cancelled = false;
+
     try {
       const storedCart = localStorage.getItem("aether_cart");
       if (storedCart) {
@@ -78,7 +129,22 @@ export default function App() {
     const storedSession = loadStoredSession();
     if (storedSession) {
       setAuthSession(storedSession);
+      restoreSession(storedSession)
+        .then((session) => {
+          if (cancelled) return;
+          persistSession(session);
+          setAuthSession(session);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          persistSession(null);
+          setAuthSession(null);
+        });
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -144,26 +210,81 @@ export default function App() {
     }
   }, [authSession?.user.id, authSession?.user.role]);
 
+  const finalizeAuthSession = async (session: AuthSession) => {
+    persistSession(session);
+    setAuthSession(session);
+    setAuthDialogOpen(false);
+    setPhoneConfirmation(null);
+
+    if (session.user.role === "admin") {
+      await syncAdminData(session);
+    }
+    if (session.user.role === "customer" && products.length > 0) {
+      const remoteCart = await fetchRemoteCart(session, setAuthSession, productLookup);
+      setCart(remoteCart);
+    }
+  };
+
   const handleAuthSubmit = async (values: { email: string; password: string }) => {
     setAuthBusy(true);
     setAuthError(null);
     try {
       const session = await authenticate(authMode, values);
-      persistSession(session);
-      setAuthSession(session);
-      setAuthDialogOpen(false);
-      if (session.user.role === "admin") {
-        await syncAdminData(session);
-      }
-      if (session.user.role === "customer" && products.length > 0) {
-        const remoteCart = await fetchRemoteCart(session, setAuthSession, productLookup);
-        setCart(remoteCart);
-      }
+      await finalizeAuthSession(session);
     } catch (error: any) {
       setAuthError(error?.message || "Authentication failed.");
     } finally {
       setAuthBusy(false);
     }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      const session = await authenticateWithGoogle();
+      await finalizeAuthSession(session);
+    } catch (error: any) {
+      setAuthError(error?.message || "Google sign-in failed.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handlePhoneSendCode = async (phoneNumber: string) => {
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      const confirmation = await startPhoneSignIn(phoneNumber);
+      setPhoneConfirmation(confirmation);
+    } catch (error: any) {
+      setAuthError(error?.message || "Phone verification could not start.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handlePhoneVerifyCode = async (otpCode: string) => {
+    if (!phoneConfirmation) {
+      setAuthError("Request a verification code before submitting the OTP.");
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      const session = await completePhoneSignIn(phoneConfirmation, otpCode);
+      await finalizeAuthSession(session);
+    } catch (error: any) {
+      setAuthError(error?.message || "OTP verification failed.");
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handlePhoneReset = () => {
+    setPhoneConfirmation(null);
+    setAuthError(null);
   };
 
   const handleLogout = async () => {
@@ -174,8 +295,10 @@ export default function App() {
         // Clear local session even if the service already revoked the token.
       }
     }
+    await clearFirebaseClientSession();
     persistSession(null);
     setAuthSession(null);
+    setPhoneConfirmation(null);
     setAdminDashboard(null);
     setAdminUsers([]);
     setAdminPayments([]);
@@ -371,9 +494,14 @@ export default function App() {
     return matchesCategory && haystack.includes(searchQuery.toLowerCase());
   });
 
+  const heroStats = useMemo(() => getAiSpotlight(products), [products]);
+  const heroProduct = filteredProducts[0] ?? products[0] ?? null;
+
   return (
-    <div className="min-h-screen bg-editorial-bg text-editorial-text relative pb-16 selection:bg-editorial-accent selection:text-editorial-dark">
-      <div className="border-t border-editorial-text/10" />
+    <div className="relative min-h-screen overflow-x-hidden bg-editorial-bg text-editorial-text">
+      <div className="pointer-events-none absolute inset-0 surface-grid opacity-25" />
+      <div className="pointer-events-none absolute left-1/2 top-0 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(85,214,255,0.18),transparent_58%)] blur-3xl" />
+      <div className="pointer-events-none absolute right-0 top-24 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(125,107,255,0.16),transparent_60%)] blur-3xl" />
 
       <Navbar
         cartCount={cart.reduce((sum, item) => sum + item.quantity, 0)}
@@ -381,174 +509,378 @@ export default function App() {
         comparedCount={comparedProducts.length}
         onCompareClick={() => setComparisonOpen(true)}
         onAICompanionClick={() => {
-          const btn = document.getElementById("nav-ai-button");
-          if (btn) btn.click();
+          document.getElementById("techshop-ai-launcher")?.click();
         }}
         favoritesCount={favorites.length}
         onFavoritesClick={() => setFavoritesOpen(true)}
+        authSession={authSession}
+        onAuthClick={() => {
+          setAuthMode("login");
+          setAuthError(null);
+          setPhoneConfirmation(null);
+          setAuthDialogOpen(true);
+        }}
+        onLogoutClick={handleLogout}
       />
 
-      <section className="mx-auto flex max-w-7xl flex-col gap-4 px-4 pt-5 md:flex-row md:items-center md:justify-between md:px-8">
-        <div className="text-xs uppercase tracking-[0.18em] text-editorial-text/55">
-          {authSession ? `Session active: ${authSession.user.email} / ${authSession.user.role}` : "Guest browsing mode"}
-        </div>
-        <div className="flex flex-wrap gap-3">
-          {isAdminWorkspace && authSession && (
-            <button onClick={() => syncAdminData()} className="border border-editorial-text/20 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-editorial-dark">
-              Open Admin Sync
-            </button>
-          )}
-          {authSession ? (
-            <button onClick={handleLogout} className="flex items-center gap-2 border border-editorial-text bg-editorial-text px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-editorial-bg">
-              <LogOut className="h-3.5 w-3.5" />
-              Sign Out
-            </button>
-          ) : (
-            <button
-              onClick={() => {
-                setAuthMode("login");
-                setAuthError(null);
-                setAuthDialogOpen(true);
-              }}
-              className="flex items-center gap-2 border border-editorial-text bg-editorial-text px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-editorial-bg"
-            >
-              <LogIn className="h-3.5 w-3.5" />
-              Sign In
-            </button>
-          )}
-        </div>
-      </section>
+      <main className="relative z-10 mx-auto flex max-w-7xl flex-col gap-10 px-4 pb-20 pt-6 md:px-8 md:pt-10">
+        <section className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_380px]">
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.45, ease: "easeOut" }}
+            className="glass-panel glass-border overflow-hidden rounded-[32px] p-6 md:p-8"
+          >
+            <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-editorial-text/60">
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
+                AI Curated Hardware
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
+                <ShieldCheck className="h-3.5 w-3.5 text-emerald-300" />
+                Production-Ready Catalog
+              </span>
+            </div>
 
-      {isAdminWorkspace && authSession && (
-        <AdminPanel
-          user={authSession.user}
-          dashboard={adminDashboard}
-          users={adminUsers}
-          payments={adminPayments}
-          reviews={adminReviews}
-          loading={adminLoading}
-          error={adminError}
-          selectedUserId={selectedAdminUserId}
-          onRefresh={() => syncAdminData()}
-          onSelectUser={handleSelectAdminUser}
-          onToggleUserStatus={handleToggleUserStatus}
-          onClearLockout={handleClearLockout}
-          onChangeUserRole={handleChangeUserRole}
-          onDeleteReview={handleDeleteReview}
-        />
-      )}
+            <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-end">
+              <div>
+                <h1 className="serif max-w-3xl text-4xl font-bold leading-[0.95] tracking-[-0.04em] md:text-6xl">
+                  Shop future hardware with
+                  <span className="text-gradient"> AI-guided confidence.</span>
+                </h1>
+                <p className="mt-5 max-w-2xl text-sm leading-7 text-editorial-text/68 md:text-base">
+                  A premium storefront for curated devices, intelligent search, fast comparison, and checkout that stays connected to your existing catalog and session logic.
+                </p>
 
-      <main className="max-w-7xl mx-auto px-4 md:px-8 py-8 md:py-16 space-y-12">
-        <section className="text-center max-w-4xl mx-auto space-y-5 animate-in fade-in slide-in-from-top-3 duration-500 pt-6">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 border border-editorial-text/15 bg-editorial-accent/20 text-editorial-text cap-text select-none">
-            <Sparkles className="w-2.5 h-2.5 opacity-70" />
-            <span>Issue No. 04 — Modernist Hardware</span>
-          </div>
+                <div className="mt-8 grid gap-3 sm:grid-cols-3">
+                  {heroStats.map((item) => (
+                    <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                      <p className="text-[11px] uppercase tracking-[0.18em] text-editorial-text/50">{item.label}</p>
+                      <p className="mt-2 text-sm font-semibold text-editorial-text">{item.value}</p>
+                      <p className="mt-1 text-xs text-editorial-text/55">{item.meta}</p>
+                    </div>
+                  ))}
+                </div>
 
-          <h1 className="serif text-4xl md:text-7xl font-bold text-editorial-text tracking-tighter leading-[0.95] py-2">
-            Future Hardware,<br />
-            <span className="serif italic text-editorial-text/75 font-normal">Decided with AI Clarity.</span>
-          </h1>
+                <div className="mt-8 grid gap-4 rounded-[28px] border border-white/10 bg-slate-950/40 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] md:p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/52">AI Command Search</p>
+                      <p className="mt-1 text-sm text-editorial-text/70">Describe a setup, workflow, or constraint and jump straight to the closest product.</p>
+                    </div>
+                    <div className="hidden rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-semibold text-cyan-200 md:block">
+                      Natural language enabled
+                    </div>
+                  </div>
 
-          <p className="text-xs md:text-sm text-editorial-text max-w-[585px] mx-auto leading-relaxed opacity-75 font-sans">
-            Explore the live catalog from the backend, compare hardware side-by-side, and move from discovery to checkout without drifting away from the database truth.
-          </p>
+                  <form onSubmit={handleAISemanticSearch} className="rounded-[24px] border border-white/10 bg-white/[0.03] p-2">
+                    <div className="flex flex-col gap-2 md:flex-row">
+                      <div className="relative flex-1">
+                        <BrainCircuit className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-300/80" />
+                        <input
+                          type="text"
+                          required
+                          value={aiSearchPrompt}
+                          onChange={(e) => setAiSearchPrompt(e.target.value)}
+                          disabled={aiSearching}
+                          placeholder="Find me a quiet travel headset, a low-latency keyboard, or a creator desk upgrade"
+                          className="w-full rounded-[18px] border border-transparent bg-transparent py-4 pl-11 pr-4 text-sm text-editorial-text outline-none placeholder:text-editorial-text/32 focus:border-cyan-400/25"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={!aiSearchPrompt.trim() || aiSearching}
+                        className="inline-flex items-center justify-center gap-2 rounded-[18px] bg-[linear-gradient(135deg,#4c82ff,#55d6ff)] px-5 py-4 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {aiSearching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                        Run AI Search
+                      </button>
+                    </div>
+                  </form>
+
+                  <div className="flex flex-wrap gap-2 text-xs text-editorial-text/54">
+                    {["Best compact workstation", "Fitness wearable with long battery", "Premium audio for commuting"].map((prompt) => (
+                      <button
+                        key={prompt}
+                        onClick={() => setAiSearchPrompt(prompt)}
+                        className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-editorial-text"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(10,18,39,0.9),rgba(7,11,24,0.78))] p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/50">Featured by AI</p>
+                    <h2 className="mt-2 text-xl font-semibold text-editorial-text">Signal-ready recommendation</h2>
+                  </div>
+                  <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] text-editorial-text/58">
+                    Live inventory
+                  </div>
+                </div>
+
+                {heroProduct ? (
+                  <div className="mt-5 space-y-4">
+                    <div className="overflow-hidden rounded-[24px] border border-white/10 bg-slate-950/60">
+                      <img src={heroProduct.image} alt={heroProduct.name} className="h-64 w-full object-cover" />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-editorial-text/58">
+                        <span className="rounded-full border border-white/10 px-3 py-1">{heroProduct.brand || "TechShop"}</span>
+                        <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-cyan-200">{heroProduct.category}</span>
+                      </div>
+                      <h3 className="text-2xl font-semibold text-editorial-text">{heroProduct.name}</h3>
+                      <p className="line-clamp-3 text-sm leading-6 text-editorial-text/68">{heroProduct.description}</p>
+                    </div>
+                    <div className="flex items-center justify-between rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
+                      <div>
+                        <p className="text-[11px] uppercase tracking-[0.18em] text-editorial-text/52">Starting at</p>
+                        <p className="mt-1 text-2xl font-semibold text-editorial-text">{formatCurrency(heroProduct.price)}</p>
+                      </div>
+                      <button
+                        onClick={() => handleProductSelect(heroProduct)}
+                        className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-editorial-text transition hover:border-cyan-400/30 hover:bg-cyan-400/10"
+                      >
+                        View detail
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-[24px] border border-dashed border-white/10 p-8 text-sm text-editorial-text/55">
+                    Catalog preview will appear here when products finish syncing.
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+
+          <motion.aside
+            initial={{ opacity: 0, y: 28 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.05, ease: "easeOut" }}
+            className="glass-panel glass-border rounded-[32px] p-5 md:p-6"
+          >
+            <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/50">Session</p>
+            <div className="mt-4 rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
+              <p className="text-sm font-semibold text-editorial-text">
+                {authSession ? authSession.user.email : "Guest browsing mode"}
+              </p>
+              <p className="mt-1 text-xs text-editorial-text/55">
+                {authSession ? `Role: ${authSession.user.role}` : "Sign in to unlock backend checkout and persistent cart sync."}
+              </p>
+            </div>
+
+            <div className="mt-5 grid gap-3">
+              {isAdminWorkspace && authSession && (
+                <button
+                  onClick={() => syncAdminData()}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-editorial-text transition hover:border-cyan-400/30 hover:bg-cyan-400/10"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Refresh admin data
+                </button>
+              )}
+
+              {authSession ? (
+                <button
+                  onClick={handleLogout}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-100"
+                >
+                  <LogOut className="h-4 w-4" />
+                  Sign out
+                </button>
+              ) : (
+                <button
+                  onClick={() => {
+                    setAuthMode("login");
+                    setAuthError(null);
+                    setPhoneConfirmation(null);
+                    setAuthDialogOpen(true);
+                  }}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#4c82ff,#7d6bff)] px-4 py-3 text-sm font-semibold text-white transition hover:brightness-110"
+                >
+                  <LogIn className="h-4 w-4" />
+                  Sign in to sync
+                </button>
+              )}
+            </div>
+
+            <div className="mt-6 grid gap-3">
+              <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/50">Cart Signal</p>
+                <p className="mt-2 text-2xl font-semibold text-editorial-text">{cart.reduce((sum, item) => sum + item.quantity, 0)}</p>
+                <p className="mt-1 text-xs text-editorial-text/55">Items ready for basket sync and secure checkout.</p>
+              </div>
+              <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
+                <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/50">Compare Queue</p>
+                <p className="mt-2 text-2xl font-semibold text-editorial-text">{comparedProducts.length}/2</p>
+                <p className="mt-1 text-xs text-editorial-text/55">Shortlist devices for side-by-side AI analysis.</p>
+              </div>
+            </div>
+          </motion.aside>
         </section>
 
-        <section className="bg-editorial-paper border border-editorial-text/15 rounded-none p-6 md:p-8 max-w-4xl mx-auto space-y-6 animate-in fade-in duration-300">
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-end">
-            <div className="md:col-span-5 relative">
-              <label className="text-[9px] text-editorial-text font-bold uppercase tracking-wider font-mono mb-2 block">Keyword lookup</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-3.5 w-3.5 h-3.5 text-editorial-text/45" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Query by keys, specs, or metrics..."
-                  className="w-full text-xs bg-editorial-bg border border-editorial-text/20 focus:border-editorial-text focus:outline-none rounded-none pl-9 pr-3 py-3 transition-all duration-200 font-sans text-editorial-text"
-                />
+        {isAdminWorkspace && authSession && (
+          <AdminPanel
+            user={authSession.user}
+            dashboard={adminDashboard}
+            users={adminUsers}
+            payments={adminPayments}
+            reviews={adminReviews}
+            loading={adminLoading}
+            error={adminError}
+            selectedUserId={selectedAdminUserId}
+            onRefresh={() => syncAdminData()}
+            onSelectUser={handleSelectAdminUser}
+            onToggleUserStatus={handleToggleUserStatus}
+            onClearLockout={handleClearLockout}
+            onChangeUserRole={handleChangeUserRole}
+            onDeleteReview={handleDeleteReview}
+          />
+        )}
+
+        <section className="glass-panel glass-border rounded-[32px] p-5 md:p-6">
+          <div className="flex flex-col gap-5 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/50">Discover</p>
+              <h2 className="mt-2 text-2xl font-semibold text-editorial-text md:text-3xl">Premium hardware catalog</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-editorial-text/62">
+                Filter by category, scan specs fast, and move from shortlist to AI-assisted detail without losing context.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 text-xs text-editorial-text/55">
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2">
+                <Filter className="h-3.5 w-3.5" />
+                {filteredProducts.length} products visible
+              </div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2">
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                {categories.length - 1} categories synced
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-3">
+                <div className="flex flex-wrap gap-2">
+                  {categories.map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setActiveCategory(cat)}
+                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${
+                        activeCategory === cat
+                          ? "bg-[linear-gradient(135deg,rgba(76,130,255,0.95),rgba(85,214,255,0.95))] text-slate-950"
+                          : "border border-white/10 bg-slate-950/35 text-editorial-text/62 hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-editorial-text"
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-editorial-text/38" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search by product name, brand, category, or standout specs"
+                    className="w-full rounded-2xl border border-white/10 bg-slate-950/35 py-3.5 pl-11 pr-4 text-sm text-editorial-text outline-none transition placeholder:text-editorial-text/30 focus:border-cyan-400/25 focus:bg-slate-950/55"
+                  />
+                </div>
               </div>
             </div>
 
-            <div className="hidden md:flex md:col-span-1 pb-3 justify-center text-[10px] font-mono text-editorial-text/50 uppercase tracking-widest font-semibold">/</div>
-
-            <form onSubmit={handleAISemanticSearch} className="md:col-span-6 relative font-sans">
-              <label className="text-[9px] text-editorial-text font-bold uppercase tracking-wider font-mono mb-2 block flex items-center justify-between">
-                <span>AI Intent Alignment</span>
-                <span className="text-[8px] tracking-normal font-mono opacity-50 font-normal">Catalog-aware match</span>
-              </label>
-              <div className="relative flex gap-2">
-                <input
-                  type="text"
-                  required
-                  value={aiSearchPrompt}
-                  onChange={(e) => setAiSearchPrompt(e.target.value)}
-                  disabled={aiSearching}
-                  placeholder="Describe goal: 'I need a travel audio setup with strong ANC'..."
-                  className="flex-grow text-xs bg-editorial-bg border border-editorial-text/25 focus:border-editorial-text focus:outline-none rounded-none pl-3.5 pr-10 py-3 transition-all duration-250 italic text-editorial-text"
-                />
-                <button type="submit" disabled={!aiSearchPrompt.trim() || aiSearching} className="bg-editorial-text text-editorial-bg hover:bg-editorial-accent hover:text-editorial-text border border-editorial-text rounded-none px-4.5 flex items-center justify-center gap-1.5 shrink-0 transition-colors duration-250 disabled:opacity-40">
-                  {aiSearching ? <RefreshCw className="w-3 h-3 animate-spin" /> : <><Sparkles className="w-3.5 h-3.5" /><span className="text-[10px] font-bold uppercase tracking-wider font-mono hidden sm:inline">Search AI</span></>}
-                </button>
+            <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(10,18,39,0.75),rgba(8,14,30,0.55))] p-5">
+              <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/48">AI Filter Notes</p>
+              <div className="mt-4 space-y-3 text-sm text-editorial-text/68">
+                <p>Use natural search for intent. Use category tabs for speed. Use compare for tradeoff decisions.</p>
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-xs leading-6 text-editorial-text/58">
+                  Best for teams: shortlist two devices, open compare, then use the AI report before adding to cart.
+                </div>
               </div>
-            </form>
+            </div>
           </div>
+
+          <AnimatePresence mode="wait">
+            {catalogLoading ? (
+              <motion.div
+                key="loading"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -16 }}
+                className="mt-6 rounded-[28px] border border-white/10 bg-white/[0.03] p-16 text-center"
+              >
+                <RefreshCw className="mx-auto h-8 w-8 animate-spin text-cyan-300" />
+                <p className="mt-5 text-xl font-semibold text-editorial-text">Synchronizing premium catalog</p>
+                <p className="mt-2 text-sm text-editorial-text/55">Loading products, categories, and AI-ready metadata.</p>
+              </motion.div>
+            ) : filteredProducts.length === 0 ? (
+              <motion.div
+                key="empty"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -16 }}
+                className="mt-6 rounded-[28px] border border-white/10 bg-white/[0.03] p-16 text-center"
+              >
+                <Search className="mx-auto h-8 w-8 text-editorial-text/32" />
+                <p className="mt-5 text-xl font-semibold text-editorial-text">No products match this filter set</p>
+                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-editorial-text/55">
+                  Try a broader term, switch categories, or reset the search to reopen the full catalog view.
+                </p>
+                <button
+                  onClick={() => {
+                    setSearchQuery("");
+                    setActiveCategory("All");
+                  }}
+                  className="mt-6 rounded-full border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-semibold text-editorial-text transition hover:border-cyan-400/30 hover:bg-cyan-400/10"
+                >
+                  Reset filters
+                </button>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="grid"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -16 }}
+                className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3"
+              >
+                {filteredProducts.map((product, index) => (
+                  <motion.div
+                    key={product.id}
+                    initial={{ opacity: 0, y: 18 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.28, delay: Math.min(index * 0.03, 0.18) }}
+                  >
+                    <ProductCard
+                      product={product}
+                      onViewDetails={handleProductSelect}
+                      onAddToCart={handleAddToCart}
+                      isCompared={comparedProducts.some((p) => p.id === product.id)}
+                      onToggleCompare={handleToggleCompare}
+                      isFavorite={favorites.some((p) => p.id === product.id)}
+                      onToggleFavorite={handleToggleFavorite}
+                    />
+                  </motion.div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {(aiSearchError || catalogError) && (
-            <div className="p-3 bg-red-55/10 border border-red-500/20 text-red-900 text-xs rounded-none flex items-start gap-2.5 animate-in fade-in duration-200 font-mono">
-              <AlertCircle className="w-4 h-4 text-red-700 shrink-0 mt-0.5" />
+            <div className="mt-5 flex items-start gap-3 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
               <p>{aiSearchError || catalogError}</p>
-            </div>
-          )}
-        </section>
-
-        <section className="space-y-8 animate-in fade-in duration-300">
-          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-editorial-text/15 pb-5">
-            <div className="flex flex-wrap gap-2">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className={`text-[10px] uppercase tracking-wider py-2 px-4 rounded-none transition-all duration-250 cursor-pointer ${activeCategory === cat ? "bg-editorial-text text-editorial-bg font-bold border border-editorial-text" : "bg-transparent text-editorial-text/60 border border-editorial-text/10 hover:border-editorial-text/50 hover:text-editorial-text"}`}
-                >
-                  {cat}
-                </button>
-              ))}
-            </div>
-            <p className="text-[10px] text-editorial-text/50 font-mono tracking-widest uppercase">Manifest — {filteredProducts.length} curations verified</p>
-          </div>
-
-          {catalogLoading ? (
-            <div className="bg-editorial-paper rounded-none border border-editorial-text/15 p-16 text-center space-y-5">
-              <RefreshCw className="w-8 h-8 text-editorial-text/40 mx-auto animate-spin" />
-              <p className="serif text-xl font-bold text-editorial-text">Synchronizing live catalog</p>
-            </div>
-          ) : filteredProducts.length === 0 ? (
-            <div className="bg-editorial-paper rounded-none border border-editorial-text/15 p-16 text-center space-y-5">
-              <Search className="w-8 h-8 text-editorial-text/30 mx-auto" />
-              <div className="space-y-2">
-                <p className="serif text-xl font-bold text-editorial-text">No corresponding devices located</p>
-                <p className="text-xs text-editorial-text/60 max-w-sm mx-auto font-sans leading-relaxed">We could not pinpoint matching hardware items matching current indexing keywords in this collection.</p>
-              </div>
-              <button onClick={() => { setSearchQuery(""); setActiveCategory("All"); }} className="text-[10px] uppercase tracking-widest font-bold bg-editorial-text text-editorial-bg px-5 py-2.5 rounded-none border border-editorial-text hover:bg-transparent hover:text-editorial-text transition-colors duration-250 cursor-pointer">
-                Reset Layout filters
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
-              {filteredProducts.map((product) => (
-                <ProductCard
-                  key={product.id}
-                  product={product}
-                  onViewDetails={handleProductSelect}
-                  onAddToCart={handleAddToCart}
-                  isCompared={comparedProducts.some((p) => p.id === product.id)}
-                  onToggleCompare={handleToggleCompare}
-                  isFavorite={favorites.some((p) => p.id === product.id)}
-                  onToggleFavorite={handleToggleFavorite}
-                />
-              ))}
             </div>
           )}
         </section>
@@ -594,11 +926,30 @@ export default function App() {
 
       <AIChatBot products={products} selectedProductId={selectedProduct?.id} />
 
-      <AuthDialog open={authDialogOpen} mode={authMode} busy={authBusy} error={authError} onClose={() => setAuthDialogOpen(false)} onSubmit={handleAuthSubmit} onModeChange={setAuthMode} />
+      <AuthDialog
+        open={authDialogOpen}
+        mode={authMode}
+        busy={authBusy}
+        error={authError}
+        phoneVerificationPending={phoneConfirmation !== null}
+        onClose={() => {
+          setAuthDialogOpen(false);
+          setPhoneConfirmation(null);
+          setAuthError(null);
+        }}
+        onSubmit={handleAuthSubmit}
+        onModeChange={setAuthMode}
+        onGoogleSignIn={handleGoogleSignIn}
+        onPhoneSendCode={handlePhoneSendCode}
+        onPhoneVerifyCode={handlePhoneVerifyCode}
+        onPhoneReset={handlePhoneReset}
+      />
 
-      <footer className="border-t border-editorial-text/15 py-8 text-center text-[9px] text-editorial-text/45 font-mono tracking-widest uppercase mt-16 space-y-2 max-w-5xl mx-auto">
-        <div>THE ARCHIVE — CURATED INTELLECTUAL HARDWARE FOR CONTEMPORARY DESIGNS</div>
-        <div className="opacity-60 text-[8px]">SERIES 2026 © ALL SPECULATIONS AUTHORIZED UNDER DISTRIBUTED CREDENTIALS</div>
+      <footer className="relative z-10 mx-auto mt-8 max-w-7xl px-4 pb-10 md:px-8">
+        <div className="glass-panel glass-border rounded-[28px] px-6 py-5 text-center text-xs uppercase tracking-[0.18em] text-editorial-text/45">
+          <div>TechShop AI Commerce Interface</div>
+          <div className="mt-2 text-[11px] tracking-[0.16em] text-editorial-text/32">Premium storefront layer on top of your existing catalog, auth, cart, and review logic</div>
+        </div>
       </footer>
     </div>
   );
