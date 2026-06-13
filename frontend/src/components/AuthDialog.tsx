@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { LoaderCircle, LogIn, Smartphone, UserPlus, X } from "lucide-react";
+import { Eye, EyeOff, LoaderCircle, LogIn, Smartphone, UserPlus, X } from "lucide-react";
 
 interface AuthDialogProps {
   open: boolean;
@@ -32,6 +32,9 @@ export default function AuthDialog({
 }: AuthDialogProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("+84");
   const [otpCode, setOtpCode] = useState("");
 
@@ -39,6 +42,9 @@ export default function AuthDialog({
     if (!open) {
       setEmail("");
       setPassword("");
+      setConfirmPassword("");
+      setShowPassword(false);
+      setShowConfirmPassword(false);
       setPhoneNumber("+84");
       setOtpCode("");
       return;
@@ -48,6 +54,9 @@ export default function AuthDialog({
 
   useEffect(() => {
     setPassword("");
+    setConfirmPassword("");
+    setShowPassword(false);
+    setShowConfirmPassword(false);
   }, [mode]);
 
   useEffect(() => {
@@ -60,16 +69,16 @@ export default function AuthDialog({
     return null;
   }
 
-  const title = mode === "login" ? "Access TechShop" : "Create account";
+  const title = mode === "login" ? "Sign in to Lamania" : "Create account";
   const description = mode === "login"
-    ? "Sign in to unlock customer checkout, persistent cart sync, and account-backed reviews."
-    : "Create a customer account, or use Google or your phone number for a faster sign-in flow.";
+    ? "Use your account for checkout, saved cart, and reviews."
+    : "Create an account for faster checkout and order tracking.";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/28 p-4 backdrop-blur-md">
       <div className="absolute inset-0" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-md overflow-hidden rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(11,18,37,0.94),rgba(8,13,27,0.94))] p-6 shadow-[0_30px_100px_rgba(2,6,23,0.7)] md:p-8">
-        <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(85,214,255,0.8),transparent)]" />
+      <div className="relative z-10 w-full max-w-md overflow-hidden rounded-[8px] border border-stone-900/10 bg-white p-6 shadow-[0_30px_100px_rgba(112,82,48,0.42)] md:p-8">
+        <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-[linear-gradient(90deg,transparent,rgba(185,135,70,0.8),transparent)]" />
 
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -79,18 +88,18 @@ export default function AuthDialog({
           </div>
           <button
             onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] text-editorial-text/60 transition hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-editorial-text"
+            className="flex h-10 w-10 items-center justify-center rounded-2xl border border-stone-900/10 bg-white/65 text-editorial-text/60 transition hover:border-amber-700/25 hover:bg-amber-700/10 hover:text-editorial-text"
             aria-label="Close authentication dialog"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="mt-6 grid grid-cols-2 rounded-2xl border border-white/10 bg-slate-950/45 p-1 text-sm">
-          <button onClick={() => onModeChange("login")} className={`rounded-xl px-4 py-3 font-semibold transition ${mode === "login" ? "bg-white text-slate-950" : "text-editorial-text/58 hover:bg-white/[0.04] hover:text-editorial-text"}`}>
+        <div className="mt-6 grid grid-cols-2 rounded-2xl border border-stone-900/10 bg-stone-100/80 p-1 text-sm">
+          <button onClick={() => onModeChange("login")} className={`rounded-xl px-4 py-3 font-semibold transition ${mode === "login" ? "bg-white text-stone-950" : "text-editorial-text/58 hover:bg-white/65 hover:text-editorial-text"}`}>
             Sign in
           </button>
-          <button onClick={() => onModeChange("register")} className={`rounded-xl px-4 py-3 font-semibold transition ${mode === "register" ? "bg-white text-slate-950" : "text-editorial-text/58 hover:bg-white/[0.04] hover:text-editorial-text"}`}>
+          <button onClick={() => onModeChange("register")} className={`rounded-xl px-4 py-3 font-semibold transition ${mode === "register" ? "bg-white text-stone-950" : "text-editorial-text/58 hover:bg-white/65 hover:text-editorial-text"}`}>
             Register
           </button>
         </div>
@@ -99,6 +108,9 @@ export default function AuthDialog({
           className="mt-6 space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
+            if (mode === "register" && password !== confirmPassword) {
+              return;
+            }
             onSubmit({ email: email.trim(), password });
           }}
         >
@@ -110,29 +122,62 @@ export default function AuthDialog({
               autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-3.5 text-sm text-editorial-text outline-none transition placeholder:text-editorial-text/28 focus:border-cyan-400/25 focus:bg-slate-950/60"
-              placeholder="admin@techshop.local"
+              className="w-full rounded-2xl border border-stone-900/10 bg-stone-100/80 px-4 py-3.5 text-sm text-editorial-text outline-none transition placeholder:text-editorial-text/28 focus:border-amber-700/25 focus:bg-white/80"
+            placeholder="you@lamania.local"
             />
           </label>
 
           <label className="block space-y-2">
             <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-editorial-text/48">Password</span>
-            <input
-              type="password"
-              required
-              minLength={8}
-              autoComplete={mode === "login" ? "current-password" : "new-password"}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="w-full rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-3.5 text-sm text-editorial-text outline-none transition placeholder:text-editorial-text/28 focus:border-cyan-400/25 focus:bg-slate-950/60"
-              placeholder="Use at least 8 characters"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                minLength={8}
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                className="w-full rounded-2xl border border-stone-900/10 bg-stone-100/80 px-4 py-3.5 pr-12 text-sm text-editorial-text outline-none transition placeholder:text-editorial-text/28 focus:border-amber-700/25 focus:bg-white/80"
+                placeholder="Use at least 8 characters"
+              />
+              <button type="button" onClick={() => setShowPassword((v) => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-editorial-text/40 hover:text-editorial-text">
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
           </label>
+
+          {mode === "register" && (
+            <label className="block space-y-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-editorial-text/48">Confirm Password</span>
+              <div className="relative">
+                <input
+                  type={showConfirmPassword ? "text" : "password"}
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  className={`w-full rounded-2xl border bg-stone-100/80 px-4 py-3.5 pr-12 text-sm text-editorial-text outline-none transition placeholder:text-editorial-text/28 focus:bg-white/80 ${
+                    confirmPassword && confirmPassword !== password
+                      ? "border-red-400/50 focus:border-red-400/70"
+                      : "border-stone-900/10 focus:border-amber-700/25"
+                  }`}
+                  placeholder="Re-enter your password"
+                />
+                <button type="button" onClick={() => setShowConfirmPassword((v) => !v)} className="absolute right-4 top-1/2 -translate-y-1/2 text-editorial-text/40 hover:text-editorial-text">
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+              {confirmPassword && confirmPassword !== password && (
+                <p className="text-xs text-red-600">Passwords do not match</p>
+              )}
+            </label>
+          )}
 
           <button
             type="submit"
-            disabled={busy}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#4c82ff,#55d6ff)] px-5 py-4 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
+            disabled={busy || (mode === "register" && (!confirmPassword || confirmPassword !== password))}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#a8783f,#b98746)] px-5 py-4 text-sm font-semibold text-stone-950 transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
           >
             {busy ? (
               <>
@@ -164,14 +209,14 @@ export default function AuthDialog({
             type="button"
             onClick={onGoogleSignIn}
             disabled={busy}
-            className="flex w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white px-5 py-3.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-50 disabled:cursor-wait disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-3 rounded-2xl border border-stone-900/10 bg-white px-5 py-3.5 text-sm font-semibold text-stone-950 transition hover:bg-amber-50 disabled:cursor-wait disabled:opacity-60"
           >
             <span className="text-base leading-none">G</span>
             Continue with Google
           </button>
         </div>
 
-        <div className="mt-6 rounded-3xl border border-white/10 bg-slate-950/45 p-4">
+        <div className="mt-6 rounded-3xl border border-stone-900/10 bg-stone-100/80 p-4">
           <div className="flex items-center gap-2 text-sm font-semibold text-editorial-text">
             <Smartphone className="h-4 w-4" />
             Phone sign-in
@@ -186,14 +231,14 @@ export default function AuthDialog({
                 type="tel"
                 value={phoneNumber}
                 onChange={(event) => setPhoneNumber(event.target.value)}
-                className="w-full rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-3.5 text-sm text-editorial-text outline-none transition placeholder:text-editorial-text/28 focus:border-cyan-400/25 focus:bg-slate-950/60"
+                className="w-full rounded-2xl border border-stone-900/10 bg-stone-100/80 px-4 py-3.5 text-sm text-editorial-text outline-none transition placeholder:text-editorial-text/28 focus:border-amber-700/25 focus:bg-white/80"
                 placeholder="+84901234567"
               />
               <button
                 type="button"
                 onClick={() => onPhoneSendCode(phoneNumber.trim())}
                 disabled={busy || phoneNumber.trim().length < 8}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-400/25 bg-cyan-400/10 px-5 py-3.5 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-400/15 disabled:cursor-wait disabled:opacity-60"
+                className="flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-700/25 bg-amber-700/10 px-5 py-3.5 text-sm font-semibold text-amber-900 transition hover:bg-amber-700/15 disabled:cursor-wait disabled:opacity-60"
               >
                 {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />}
                 Send verification code
@@ -206,14 +251,14 @@ export default function AuthDialog({
                 inputMode="numeric"
                 value={otpCode}
                 onChange={(event) => setOtpCode(event.target.value)}
-                className="w-full rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-3.5 text-sm text-editorial-text outline-none transition placeholder:text-editorial-text/28 focus:border-cyan-400/25 focus:bg-slate-950/60"
+                className="w-full rounded-2xl border border-stone-900/10 bg-stone-100/80 px-4 py-3.5 text-sm text-editorial-text outline-none transition placeholder:text-editorial-text/28 focus:border-amber-700/25 focus:bg-white/80"
                 placeholder="Enter 6-digit OTP"
               />
               <button
                 type="button"
                 onClick={() => onPhoneVerifyCode(otpCode.trim())}
                 disabled={busy || otpCode.trim().length < 6}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#34d399,#55d6ff)] px-5 py-3.5 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#34d399,#b98746)] px-5 py-3.5 text-sm font-semibold text-stone-950 transition hover:brightness-110 disabled:cursor-wait disabled:opacity-60"
               >
                 {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <LogIn className="h-4 w-4" />}
                 Verify code and sign in
@@ -222,7 +267,7 @@ export default function AuthDialog({
                 type="button"
                 onClick={onPhoneReset}
                 disabled={busy}
-                className="w-full rounded-2xl border border-white/10 px-4 py-3 text-sm font-semibold text-editorial-text/72 transition hover:bg-white/[0.04] disabled:cursor-wait disabled:opacity-60"
+                className="w-full rounded-2xl border border-stone-900/10 px-4 py-3 text-sm font-semibold text-editorial-text/72 transition hover:bg-white/65 disabled:cursor-wait disabled:opacity-60"
               >
                 Use another phone number
               </button>
@@ -232,7 +277,7 @@ export default function AuthDialog({
           <div id="firebase-phone-recaptcha" className="mt-3 min-h-[1px]" />
         </div>
 
-        {error && <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">{error}</div>}
+        {error && <div className="mt-4 rounded-2xl border border-red-700/20 bg-red-700/10 px-4 py-3 text-sm text-red-800">{error}</div>}
       </div>
     </div>
   );

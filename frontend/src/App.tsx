@@ -1,19 +1,25 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import type { ConfirmationResult } from "firebase/auth";
 import { AnimatePresence, motion } from "motion/react";
 import {
   AlertCircle,
   ArrowRight,
-  BrainCircuit,
-  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Filter,
-  LogIn,
-  LogOut,
+  Headphones,
+  Laptop,
+  MapPin,
+  MessageCircle,
+  Phone,
   RefreshCw,
   Search,
   ShieldCheck,
-  SlidersHorizontal,
-  Sparkles,
+  Smartphone,
+  Tablet,
+  Truck,
+  Zap,
+  ZapOff,
 } from "lucide-react";
 import Navbar from "./components/Navbar";
 import ProductCard from "./components/ProductCard";
@@ -24,6 +30,7 @@ import Cart from "./components/Cart";
 import Favorites from "./components/Favorites";
 import AuthDialog from "./components/AuthDialog";
 import AdminPanel from "./components/AdminPanel";
+import CustomerProfile from "./components/CustomerProfile";
 import {
   authenticate,
   authenticateWithGoogle,
@@ -40,6 +47,7 @@ import { AdminDashboardData, AdminPaymentRecord, AdminReviewRecord, AdminUserRec
 import { fetchCatalogProducts, fetchCategories, fetchProductDetail } from "./catalog";
 import { addRemoteCartItem, clearRemoteCart, fetchRemoteCart, removeRemoteCartItem, updateRemoteCartItem } from "./cart";
 import { checkoutOrder } from "./orders";
+import { PRODUCTS } from "./products";
 
 function flattenCategories(categories: CategoryNode[], bag: string[] = []): string[] {
   categories.forEach((category) => {
@@ -57,21 +65,6 @@ function formatCurrency(value: number) {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(value);
-}
-
-function getAiSpotlight(products: Product[]) {
-  if (products.length === 0) {
-    return [];
-  }
-
-  const byRating = [...products].sort((a, b) => (b.rating * 10 + b.reviewsCount) - (a.rating * 10 + a.reviewsCount));
-  const byPrice = [...products].sort((a, b) => a.price - b.price);
-
-  return [
-    { label: "Top Rated", value: byRating[0]?.name ?? "Syncing", meta: `${byRating[0]?.rating ?? 0}/5 signal` },
-    { label: "Best Entry", value: byPrice[0]?.name ?? "Syncing", meta: byPrice[0] ? formatCurrency(byPrice[0].price) : "Catalog loading" },
-    { label: "Live Catalog", value: `${products.length}`, meta: "AI-ranked devices" },
-  ];
 }
 
 export default function App() {
@@ -104,9 +97,18 @@ export default function App() {
   const [aiSearchPrompt, setAiSearchPrompt] = useState("");
   const [aiSearching, setAiSearching] = useState(false);
   const [aiSearchError, setAiSearchError] = useState<string | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [featuredIndex, setFeaturedIndex] = useState(0);
+  const featuredTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [activeBrand, setActiveBrand] = useState("All");
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 100000000]);
 
   const productLookup = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
-  const categories = useMemo(() => ["All", ...Array.from(new Set(flattenCategories(categoriesTree)))], [categoriesTree]);
+  const categories = useMemo(() => {
+    const fromApi = flattenCategories(categoriesTree);
+    const fromProducts = products.map((product) => product.category).filter(Boolean);
+    return ["All", ...Array.from(new Set([...fromApi, ...fromProducts]))];
+  }, [categoriesTree, products]);
   const isAdminWorkspace = authSession?.user.role === "admin";
   const isCustomerSession = authSession?.user.role === "customer";
 
@@ -159,7 +161,9 @@ export default function App() {
         setProducts(catalogProducts);
         setCategoriesTree(categoryData);
       } catch (error: any) {
-        setCatalogError(error?.message || "Catalog could not be synchronized.");
+        setProducts(PRODUCTS);
+        setCategoriesTree([]);
+        setCatalogError(null);
       } finally {
         setCatalogLoading(false);
       }
@@ -209,6 +213,17 @@ export default function App() {
       syncAdminData();
     }
   }, [authSession?.user.id, authSession?.user.role]);
+
+  // Featured product auto-rotation every 4 seconds
+  useEffect(() => {
+    if (products.length === 0) return;
+    featuredTimerRef.current = setInterval(() => {
+      setFeaturedIndex((prev) => (prev + 1) % Math.min(products.length, 8));
+    }, 4000);
+    return () => {
+      if (featuredTimerRef.current) clearInterval(featuredTimerRef.current);
+    };
+  }, [products.length]);
 
   const finalizeAuthSession = async (session: AuthSession) => {
     persistSession(session);
@@ -490,18 +505,50 @@ export default function App() {
 
   const filteredProducts = products.filter((product) => {
     const matchesCategory = activeCategory === "All" || product.category === activeCategory;
+    const matchesBrand = activeBrand === "All" || product.brand === activeBrand;
+    const matchesPrice = product.price >= priceRange[0] && product.price <= priceRange[1];
     const haystack = [product.name, product.description, product.category, product.brand, ...product.features].join(" ").toLowerCase();
-    return matchesCategory && haystack.includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesBrand && matchesPrice && haystack.includes(searchQuery.toLowerCase());
   });
 
-  const heroStats = useMemo(() => getAiSpotlight(products), [products]);
-  const heroProduct = filteredProducts[0] ?? products[0] ?? null;
+  const brandsForCategory = useMemo(() => {
+    const source = activeCategory === "All" ? products : products.filter((p) => p.category === activeCategory);
+    return ["All", ...Array.from(new Set(source.map((p) => p.brand).filter(Boolean))).sort()];
+  }, [products, activeCategory]);
+
+  const maxPrice = useMemo(() => {
+    if (products.length === 0) return 100000000;
+    return Math.max(...products.map((p) => p.price));
+  }, [products]);
+
+  const featuredProducts = products.slice(0, 8);
+  const heroProduct = featuredProducts[featuredIndex] ?? products[0] ?? null;
+
+  const CATEGORY_SHORTCUTS = [
+    { label: "Điện thoại", value: "Smartphones", icon: <Smartphone className="h-5 w-5" /> },
+    { label: "Laptop", value: "Laptops", icon: <Laptop className="h-5 w-5" /> },
+    { label: "Tai nghe", value: "Tai nghe", icon: <Headphones className="h-5 w-5" /> },
+    { label: "Đồng hồ", value: "Đồng hồ thông minh", icon: <RefreshCw className="h-5 w-5" /> },
+    { label: "Máy tính bảng", value: "Máy tính bảng", icon: <Tablet className="h-5 w-5" /> },
+    { label: "Sạc điện thoại", value: "Sạc điện thoại", icon: <Zap className="h-5 w-5" /> },
+    { label: "Sạc dự phòng", value: "Sạc dự phòng", icon: <ZapOff className="h-5 w-5" /> },
+    { label: "Phụ kiện", value: "Phụ kiện", icon: <Phone className="h-5 w-5" /> },
+    { label: "Cáp & Hub", value: "Cáp & Hub", icon: <Truck className="h-5 w-5" /> },
+  ];
+
+  const recommendedProducts = useMemo(() => {
+    if (products.length === 0) return [];
+    const scored = products.map((p) => ({
+      product: p,
+      score: (p.rating ?? 0) * 20 + (p.reviewCount ?? 0) * 0.5 + (p.price > 500 ? 10 : 0),
+    }));
+    scored.sort((a, b) => b.score - a.score);
+    return scored.slice(0, 8).map((s) => s.product);
+  }, [products]);
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-editorial-bg text-editorial-text">
-      <div className="pointer-events-none absolute inset-0 surface-grid opacity-25" />
-      <div className="pointer-events-none absolute left-1/2 top-0 h-[520px] w-[520px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(85,214,255,0.18),transparent_58%)] blur-3xl" />
-      <div className="pointer-events-none absolute right-0 top-24 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(125,107,255,0.16),transparent_60%)] blur-3xl" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.72),transparent_34%)]" />
 
       <Navbar
         cartCount={cart.reduce((sum, item) => sum + item.quantity, 0)}
@@ -521,208 +568,202 @@ export default function App() {
           setAuthDialogOpen(true);
         }}
         onLogoutClick={handleLogout}
+        onProfileClick={() => setProfileOpen(true)}
       />
 
-      <main className="relative z-10 mx-auto flex max-w-7xl flex-col gap-10 px-4 pb-20 pt-6 md:px-8 md:pt-10">
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_380px]">
+      <main className="relative z-10 mx-auto flex max-w-[1600px] flex-col gap-8 px-4 pb-20 pt-6 md:px-8 md:pt-10">
+        {/* Hero / Featured rotation */}
+        <section>
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45, ease: "easeOut" }}
-            className="glass-panel glass-border overflow-hidden rounded-[32px] p-6 md:p-8"
+            className="overflow-hidden rounded-2xl border border-stone-900/10 bg-white shadow-[0_24px_80px_rgba(112,82,48,0.14)]"
           >
-            <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-editorial-text/60">
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
-                AI Curated Hardware
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5">
-                <ShieldCheck className="h-3.5 w-3.5 text-emerald-300" />
-                Production-Ready Catalog
-              </span>
-            </div>
-
-            <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-end">
-              <div>
-                <h1 className="serif max-w-3xl text-4xl font-bold leading-[0.95] tracking-[-0.04em] md:text-6xl">
-                  Shop future hardware with
-                  <span className="text-gradient"> AI-guided confidence.</span>
+            <div className="grid gap-0 lg:grid-cols-[minmax(0,1.25fr)_minmax(420px,0.75fr)]">
+              <div className="p-6 md:p-10 lg:p-14">
+                <div className="inline-flex items-center gap-2 rounded-full border border-stone-900/10 bg-stone-50 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-editorial-text/58">
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-700" />
+                  Sản phẩm chính hãng, bảo hành đầy đủ
+                </div>
+                <h1 className="mt-6 max-w-4xl text-5xl font-extrabold leading-tight text-editorial-text md:text-7xl">
+                  Nâng cấp công nghệ tại Lamania.
                 </h1>
-                <p className="mt-5 max-w-2xl text-sm leading-7 text-editorial-text/68 md:text-base">
-                  A premium storefront for curated devices, intelligent search, fast comparison, and checkout that stays connected to your existing catalog and session logic.
+                <p className="mt-5 max-w-2xl text-base leading-7 text-editorial-text/66 md:text-lg">
+                  Mua điện thoại, laptop, tai nghe, phụ kiện với thông số rõ ràng và thanh toán nhanh chóng.
                 </p>
 
-                <div className="mt-8 grid gap-3 sm:grid-cols-3">
-                  {heroStats.map((item) => (
-                    <div key={item.label} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                      <p className="text-[11px] uppercase tracking-[0.18em] text-editorial-text/50">{item.label}</p>
-                      <p className="mt-2 text-sm font-semibold text-editorial-text">{item.value}</p>
-                      <p className="mt-1 text-xs text-editorial-text/55">{item.meta}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-8 grid gap-4 rounded-[28px] border border-white/10 bg-slate-950/40 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] md:p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/52">AI Command Search</p>
-                      <p className="mt-1 text-sm text-editorial-text/70">Describe a setup, workflow, or constraint and jump straight to the closest product.</p>
-                    </div>
-                    <div className="hidden rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-[11px] font-semibold text-cyan-200 md:block">
-                      Natural language enabled
-                    </div>
-                  </div>
-
-                  <form onSubmit={handleAISemanticSearch} className="rounded-[24px] border border-white/10 bg-white/[0.03] p-2">
-                    <div className="flex flex-col gap-2 md:flex-row">
+                <div className="mt-8 max-w-4xl rounded-2xl border border-stone-900/10 bg-stone-50 p-3 md:p-4">
+                  <form onSubmit={handleAISemanticSearch} className="rounded-xl border border-stone-900/10 bg-white p-2 shadow-sm">
+                    <div className="flex flex-col gap-2 sm:flex-row">
                       <div className="relative flex-1">
-                        <BrainCircuit className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-300/80" />
+                        <Search className="pointer-events-none absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-editorial-text/42" />
                         <input
                           type="text"
                           required
                           value={aiSearchPrompt}
                           onChange={(e) => setAiSearchPrompt(e.target.value)}
                           disabled={aiSearching}
-                          placeholder="Find me a quiet travel headset, a low-latency keyboard, or a creator desk upgrade"
-                          className="w-full rounded-[18px] border border-transparent bg-transparent py-4 pl-11 pr-4 text-sm text-editorial-text outline-none placeholder:text-editorial-text/32 focus:border-cyan-400/25"
+                          placeholder="Tìm điện thoại, laptop, tai nghe, phụ kiện..."
+                          className="w-full rounded-lg border border-transparent bg-transparent py-4 pl-13 pr-4 text-base text-editorial-text outline-none placeholder:text-editorial-text/40 focus:border-amber-700/25 md:text-lg"
                         />
                       </div>
                       <button
                         type="submit"
                         disabled={!aiSearchPrompt.trim() || aiSearching}
-                        className="inline-flex items-center justify-center gap-2 rounded-[18px] bg-[linear-gradient(135deg,#4c82ff,#55d6ff)] px-5 py-4 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-editorial-text px-7 py-4 text-sm font-semibold text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {aiSearching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                        Run AI Search
+                        {aiSearching ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                        Tìm kiếm
                       </button>
                     </div>
                   </form>
 
-                  <div className="flex flex-wrap gap-2 text-xs text-editorial-text/54">
-                    {["Best compact workstation", "Fitness wearable with long battery", "Premium audio for commuting"].map((prompt) => (
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-editorial-text/58">
+                    {["Điện thoại Samsung", "Tai nghe chống ồn", "Laptop gaming", "Sạc dự phòng"].map((prompt) => (
                       <button
                         key={prompt}
                         onClick={() => setAiSearchPrompt(prompt)}
-                        className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-2 transition hover:border-cyan-400/30 hover:bg-cyan-400/10 hover:text-editorial-text"
+                        className="rounded-full border border-stone-900/10 bg-white px-3 py-2 transition hover:border-amber-700/30 hover:bg-amber-700/10 hover:text-editorial-text"
                       >
                         {prompt}
                       </button>
                     ))}
                   </div>
                 </div>
+
+                <div className="mt-8 grid gap-3 sm:grid-cols-3">
+                  {[
+                    ["Giao hàng nhanh", "Miễn phí từ 500.000 VNĐ"],
+                    ["Thanh toán an toàn", "COD, thẻ, ví điện tử"],
+                    ["Tư vấn AI", "Hỏi AI trước khi mua"],
+                  ].map(([label, meta]) => (
+                    <div key={label} className="rounded-xl border border-stone-900/10 bg-stone-50 p-4">
+                      <p className="text-sm font-semibold text-editorial-text">{label}</p>
+                      <p className="mt-1 text-xs text-editorial-text/55">{meta}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(10,18,39,0.9),rgba(7,11,24,0.78))] p-5">
+              {/* Featured rotation panel */}
+              <div className="border-t border-stone-900/10 bg-[#f7f1e6] p-5 md:p-8 lg:border-l lg:border-t-0">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/50">Featured by AI</p>
-                    <h2 className="mt-2 text-xl font-semibold text-editorial-text">Signal-ready recommendation</h2>
+                    <p className="text-[11px] uppercase tracking-[0.16em] text-editorial-text/50">Nổi bật</p>
+                    <h2 className="mt-2 text-xl font-semibold text-editorial-text">Hôm nay tại Lamania</h2>
                   </div>
-                  <div className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-[11px] text-editorial-text/58">
-                    Live inventory
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => {
+                        if (featuredTimerRef.current) clearInterval(featuredTimerRef.current);
+                        setFeaturedIndex((prev) => (prev - 1 + featuredProducts.length) % Math.max(1, featuredProducts.length));
+                        featuredTimerRef.current = setInterval(() => {
+                          setFeaturedIndex((p) => (p + 1) % Math.min(products.length, 8));
+                        }, 4000);
+                      }}
+                      className="flex h-8 w-8 items-center justify-center rounded-full border border-stone-900/10 bg-white/70 text-editorial-text/55 transition hover:bg-white hover:text-editorial-text"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (featuredTimerRef.current) clearInterval(featuredTimerRef.current);
+                        setFeaturedIndex((prev) => (prev + 1) % Math.max(1, featuredProducts.length));
+                        featuredTimerRef.current = setInterval(() => {
+                          setFeaturedIndex((p) => (p + 1) % Math.min(products.length, 8));
+                        }, 4000);
+                      }}
+                      className="flex h-8 w-8 items-center justify-center rounded-full border border-stone-900/10 bg-white/70 text-editorial-text/55 transition hover:bg-white hover:text-editorial-text"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
 
-                {heroProduct ? (
-                  <div className="mt-5 space-y-4">
-                    <div className="overflow-hidden rounded-[24px] border border-white/10 bg-slate-950/60">
-                      <img src={heroProduct.image} alt={heroProduct.name} className="h-64 w-full object-cover" />
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2 text-xs text-editorial-text/58">
-                        <span className="rounded-full border border-white/10 px-3 py-1">{heroProduct.brand || "TechShop"}</span>
-                        <span className="rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-cyan-200">{heroProduct.category}</span>
-                      </div>
-                      <h3 className="text-2xl font-semibold text-editorial-text">{heroProduct.name}</h3>
-                      <p className="line-clamp-3 text-sm leading-6 text-editorial-text/68">{heroProduct.description}</p>
-                    </div>
-                    <div className="flex items-center justify-between rounded-[20px] border border-white/10 bg-white/[0.03] p-4">
-                      <div>
-                        <p className="text-[11px] uppercase tracking-[0.18em] text-editorial-text/52">Starting at</p>
-                        <p className="mt-1 text-2xl font-semibold text-editorial-text">{formatCurrency(heroProduct.price)}</p>
-                      </div>
+                {/* Dot indicators */}
+                {featuredProducts.length > 1 && (
+                  <div className="mt-3 flex gap-1.5">
+                    {featuredProducts.map((_, i) => (
                       <button
-                        onClick={() => handleProductSelect(heroProduct)}
-                        className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-editorial-text transition hover:border-cyan-400/30 hover:bg-cyan-400/10"
-                      >
-                        View detail
-                        <ArrowRight className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-5 rounded-[24px] border border-dashed border-white/10 p-8 text-sm text-editorial-text/55">
-                    Catalog preview will appear here when products finish syncing.
+                        key={i}
+                        onClick={() => setFeaturedIndex(i)}
+                        className={`h-1.5 rounded-full transition-all ${i === featuredIndex ? "w-6 bg-amber-700" : "w-1.5 bg-stone-900/20 hover:bg-stone-900/40"}`}
+                      />
+                    ))}
                   </div>
                 )}
+
+                <AnimatePresence mode="wait">
+                  {heroProduct ? (
+                    <motion.div
+                      key={heroProduct.id}
+                      initial={{ opacity: 0, x: 16 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -16 }}
+                      transition={{ duration: 0.3 }}
+                      className="mt-5 space-y-4"
+                    >
+                      <div className="overflow-hidden rounded-2xl border border-stone-900/10 bg-white shadow-sm">
+                        <img src={heroProduct.image} alt={heroProduct.name} className="h-[300px] w-full object-cover" />
+                      </div>
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-editorial-text/58">
+                          <span className="rounded-full border border-stone-900/10 px-3 py-1">{heroProduct.brand || "Lamania"}</span>
+                          <span className="rounded-full border border-amber-700/20 bg-amber-700/10 px-3 py-1 text-amber-800">{heroProduct.category}</span>
+                        </div>
+                        <h3 className="text-xl font-semibold text-editorial-text">{heroProduct.name}</h3>
+                        <p className="line-clamp-2 text-sm leading-6 text-editorial-text/68">{heroProduct.description}</p>
+                      </div>
+                      <div className="flex items-center justify-between rounded-xl border border-stone-900/10 bg-white p-4">
+                        <div>
+                          <p className="text-[11px] uppercase tracking-[0.18em] text-editorial-text/52">Giá từ</p>
+                          <p className="mt-1 text-xl font-semibold text-editorial-text">{formatCurrency(heroProduct.price)}</p>
+                        </div>
+                        <button
+                          onClick={() => handleProductSelect(heroProduct)}
+                          className="inline-flex items-center gap-2 rounded-full border border-stone-900/10 bg-white/65 px-4 py-2 text-sm font-semibold text-editorial-text transition hover:border-amber-700/30 hover:bg-amber-700/10"
+                        >
+                          Xem chi tiết
+                          <ArrowRight className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </motion.div>
+                  ) : (
+                    <div className="mt-5 rounded-2xl border border-dashed border-stone-900/10 bg-white/60 p-8 text-sm text-editorial-text/55">
+                      Đang tải sản phẩm...
+                    </div>
+                  )}
+                </AnimatePresence>
               </div>
             </div>
           </motion.div>
+        </section>
 
-          <motion.aside
-            initial={{ opacity: 0, y: 28 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.05, ease: "easeOut" }}
-            className="glass-panel glass-border rounded-[32px] p-5 md:p-6"
-          >
-            <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/50">Session</p>
-            <div className="mt-4 rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
-              <p className="text-sm font-semibold text-editorial-text">
-                {authSession ? authSession.user.email : "Guest browsing mode"}
-              </p>
-              <p className="mt-1 text-xs text-editorial-text/55">
-                {authSession ? `Role: ${authSession.user.role}` : "Sign in to unlock backend checkout and persistent cart sync."}
-              </p>
-            </div>
-
-            <div className="mt-5 grid gap-3">
-              {isAdminWorkspace && authSession && (
-                <button
-                  onClick={() => syncAdminData()}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-editorial-text transition hover:border-cyan-400/30 hover:bg-cyan-400/10"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Refresh admin data
-                </button>
-              )}
-
-              {authSession ? (
-                <button
-                  onClick={handleLogout}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-100"
-                >
-                  <LogOut className="h-4 w-4" />
-                  Sign out
-                </button>
-              ) : (
-                <button
-                  onClick={() => {
-                    setAuthMode("login");
-                    setAuthError(null);
-                    setPhoneConfirmation(null);
-                    setAuthDialogOpen(true);
-                  }}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[linear-gradient(135deg,#4c82ff,#7d6bff)] px-4 py-3 text-sm font-semibold text-white transition hover:brightness-110"
-                >
-                  <LogIn className="h-4 w-4" />
-                  Sign in to sync
-                </button>
-              )}
-            </div>
-
-            <div className="mt-6 grid gap-3">
-              <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/50">Cart Signal</p>
-                <p className="mt-2 text-2xl font-semibold text-editorial-text">{cart.reduce((sum, item) => sum + item.quantity, 0)}</p>
-                <p className="mt-1 text-xs text-editorial-text/55">Items ready for basket sync and secure checkout.</p>
-              </div>
-              <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
-                <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/50">Compare Queue</p>
-                <p className="mt-2 text-2xl font-semibold text-editorial-text">{comparedProducts.length}/2</p>
-                <p className="mt-1 text-xs text-editorial-text/55">Shortlist devices for side-by-side AI analysis.</p>
-              </div>
-            </div>
-          </motion.aside>
+        {/* Category shortcuts */}
+        <section>
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-5 lg:grid-cols-9">
+            {CATEGORY_SHORTCUTS.map(({ label, value, icon }) => (
+              <button
+                key={value}
+                onClick={() => {
+                  setActiveCategory(value);
+                  setActiveBrand("All");
+                  document.getElementById("products-section")?.scrollIntoView({ behavior: "smooth" });
+                }}
+                className={`flex flex-col items-center gap-2.5 rounded-2xl border p-4 text-xs font-medium transition ${
+                  activeCategory === value
+                    ? "border-amber-700/30 bg-amber-700/10 text-amber-800"
+                    : "border-stone-900/10 bg-white text-editorial-text/65 hover:border-amber-700/20 hover:bg-amber-700/5 hover:text-editorial-text"
+                }`}
+              >
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${activeCategory === value ? "bg-amber-700/15 text-amber-700" : "bg-stone-100 text-editorial-text/55"}`}>
+                  {icon}
+                </div>
+                <span className="text-center leading-tight">{label}</span>
+              </button>
+            ))}
+          </div>
         </section>
 
         {isAdminWorkspace && authSession && (
@@ -744,147 +785,341 @@ export default function App() {
           />
         )}
 
-        <section className="glass-panel glass-border rounded-[32px] p-5 md:p-6">
-          <div className="flex flex-col gap-5 border-b border-white/10 pb-5 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/50">Discover</p>
-              <h2 className="mt-2 text-2xl font-semibold text-editorial-text md:text-3xl">Premium hardware catalog</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-editorial-text/62">
-                Filter by category, scan specs fast, and move from shortlist to AI-assisted detail without losing context.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-3 text-xs text-editorial-text/55">
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2">
-                <Filter className="h-3.5 w-3.5" />
-                {filteredProducts.length} products visible
+        {/* AI Recommendations carousel */}
+        {recommendedProducts.length > 0 && (
+          <section className="rounded-2xl border border-stone-900/10 bg-white p-5 shadow-[0_20px_70px_rgba(112,82,48,0.10)] md:p-6">
+            <div className="flex items-center justify-between border-b border-stone-900/10 pb-4">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.16em] text-editorial-text/50">Gợi ý cho bạn</p>
+                <h2 className="mt-2 text-xl font-semibold text-editorial-text">Sản phẩm nổi bật</h2>
               </div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-2">
-                <SlidersHorizontal className="h-3.5 w-3.5" />
-                {categories.length - 1} categories synced
+              <MessageCircle className="h-5 w-5 text-amber-700/60" />
+            </div>
+            <div className="mt-5 flex gap-4 overflow-x-auto pb-2 scrollbar-none">
+              {recommendedProducts.map((product) => (
+                <div
+                  key={product.id}
+                  className="group w-[200px] shrink-0 cursor-pointer overflow-hidden rounded-2xl border border-stone-900/10 bg-stone-50 transition hover:border-amber-700/25 hover:shadow-md"
+                  onClick={() => handleProductSelect(product)}
+                >
+                  <div className="h-[140px] overflow-hidden bg-white">
+                    <img src={product.image} alt={product.name} className="h-full w-full object-cover transition group-hover:scale-105" />
+                  </div>
+                  <div className="p-3">
+                    <p className="line-clamp-2 text-xs font-semibold text-editorial-text">{product.name}</p>
+                    <p className="mt-1 text-xs text-amber-700 font-medium">{formatCurrency(product.price)}</p>
+                    {product.rating != null && (
+                      <p className="mt-1 text-[10px] text-editorial-text/50">★ {product.rating.toFixed(1)}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Products with right sidebar */}
+        <section id="products-section" className="rounded-2xl border border-stone-900/10 bg-white p-5 shadow-[0_20px_70px_rgba(112,82,48,0.10)] md:p-6">
+          <div className="flex items-center justify-between border-b border-stone-900/10 pb-5">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.16em] text-editorial-text/50">Mua sắm</p>
+              <h2 className="mt-2 text-2xl font-semibold text-editorial-text md:text-3xl">Sản phẩm</h2>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-editorial-text/55">
+              <div className="inline-flex items-center gap-1.5 rounded-full border border-stone-900/10 bg-white/65 px-3 py-2">
+                <Filter className="h-3.5 w-3.5" />
+                {filteredProducts.length} sản phẩm
               </div>
             </div>
           </div>
 
-          <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_280px]">
-            <div className="space-y-4">
-              <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-3">
-                <div className="flex flex-wrap gap-2">
-                  {categories.map((cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => setActiveCategory(cat)}
-                      className={`rounded-full px-4 py-2 text-sm font-medium transition ${
-                        activeCategory === cat
-                          ? "bg-[linear-gradient(135deg,rgba(76,130,255,0.95),rgba(85,214,255,0.95))] text-slate-950"
-                          : "border border-white/10 bg-slate-950/35 text-editorial-text/62 hover:border-cyan-400/25 hover:bg-cyan-400/10 hover:text-editorial-text"
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  ))}
+          <div className="mt-5 flex flex-col gap-5 lg:flex-row">
+            {/* Right sidebar: filters */}
+            <aside className="order-first w-full shrink-0 lg:order-last lg:w-[220px]">
+              <div className="sticky top-24 space-y-4">
+                {/* Category filter */}
+                <div className="rounded-[8px] border border-stone-900/10 bg-stone-50 p-4">
+                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-editorial-text/50">Danh mục</p>
+                  <div className="flex flex-col gap-1">
+                    {categories.map((cat) => (
+                      <button
+                        key={cat}
+                        onClick={() => { setActiveCategory(cat); setActiveBrand("All"); }}
+                        className={`rounded-xl px-3 py-2.5 text-left text-sm font-medium transition ${
+                          activeCategory === cat
+                            ? "bg-amber-700/15 text-amber-800"
+                            : "text-editorial-text/65 hover:bg-stone-100 hover:text-editorial-text"
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              <div className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
-                <div className="relative">
+                {/* Brand filter */}
+                {brandsForCategory.length > 2 && (
+                  <div className="rounded-[8px] border border-stone-900/10 bg-stone-50 p-4">
+                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-editorial-text/50">Thương hiệu</p>
+                    <div className="flex flex-col gap-1">
+                      {brandsForCategory.map((brand) => (
+                        <button
+                          key={brand}
+                          onClick={() => setActiveBrand(brand)}
+                          className={`rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
+                            activeBrand === brand
+                              ? "bg-amber-700/15 text-amber-800"
+                              : "text-editorial-text/65 hover:bg-stone-100 hover:text-editorial-text"
+                          }`}
+                        >
+                          {brand}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Price range filter */}
+                <div className="rounded-[8px] border border-stone-900/10 bg-stone-50 p-4">
+                  <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-editorial-text/50">Khoảng giá</p>
+                  <div className="space-y-3">
+                    {[
+                      { label: "Tất cả", min: 0, max: 100000000 },
+                      { label: "Dưới 500.000đ", min: 0, max: 500000 },
+                      { label: "500K – 2 triệu", min: 500000, max: 2000000 },
+                      { label: "2 – 10 triệu", min: 2000000, max: 10000000 },
+                      { label: "10 – 30 triệu", min: 10000000, max: 30000000 },
+                      { label: "30 – 60 triệu", min: 30000000, max: 60000000 },
+                      { label: "Trên 60 triệu", min: 60000000, max: 100000000 },
+                    ].map(({ label, min, max }) => (
+                      <button
+                        key={label}
+                        onClick={() => setPriceRange([min, max])}
+                        className={`w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
+                          priceRange[0] === min && priceRange[1] === max
+                            ? "bg-amber-700/15 text-amber-800"
+                            : "text-editorial-text/65 hover:bg-stone-100 hover:text-editorial-text"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Reset filters */}
+                {(activeCategory !== "All" || activeBrand !== "All" || priceRange[0] !== 0 || priceRange[1] !== 100000000) && (
+                  <button
+                    onClick={() => { setActiveCategory("All"); setActiveBrand("All"); setPriceRange([0, 100000000]); }}
+                    className="w-full rounded-[8px] border border-stone-900/10 bg-white px-3 py-2.5 text-sm font-semibold text-editorial-text/65 transition hover:border-amber-700/25 hover:text-amber-800"
+                  >
+                    Xóa bộ lọc
+                  </button>
+                )}
+              </div>
+            </aside>
+
+            {/* Main area: search + grid */}
+            <div className="min-w-0 flex-1">
+              {/* Search + Ask AI bar */}
+              <div className="mb-5 flex flex-col gap-3 sm:flex-row">
+                <div className="relative flex-1">
                   <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-editorial-text/38" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by product name, brand, category, or standout specs"
-                    className="w-full rounded-2xl border border-white/10 bg-slate-950/35 py-3.5 pl-11 pr-4 text-sm text-editorial-text outline-none transition placeholder:text-editorial-text/30 focus:border-cyan-400/25 focus:bg-slate-950/55"
+                    placeholder="Tìm tên sản phẩm, thương hiệu, thông số..."
+                    className="w-full rounded-[8px] border border-stone-900/10 bg-stone-50 py-3 pl-11 pr-4 text-sm text-editorial-text outline-none transition placeholder:text-editorial-text/34 focus:border-amber-700/25 focus:bg-white"
                   />
+                </div>
+                <button
+                  onClick={() => document.getElementById("techshop-ai-launcher")?.click()}
+                  className="inline-flex items-center gap-2 rounded-[8px] border border-amber-700/25 bg-amber-700/10 px-4 py-3 text-sm font-semibold text-amber-800 transition hover:bg-amber-700/15"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  Hỏi AI
+                </button>
+              </div>
+
+              <AnimatePresence mode="wait">
+                {catalogLoading ? (
+                  <motion.div
+                    key="loading"
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -16 }}
+                    className="rounded-[28px] border border-stone-900/10 bg-white/65 p-16 text-center"
+                  >
+                    <RefreshCw className="mx-auto h-8 w-8 animate-spin text-amber-700" />
+                    <p className="mt-5 text-xl font-semibold text-editorial-text">Đang đồng bộ danh mục</p>
+                    <p className="mt-2 text-sm text-editorial-text/55">Đang tải sản phẩm và danh mục.</p>
+                  </motion.div>
+                ) : filteredProducts.length === 0 ? (
+                  <motion.div
+                    key="empty"
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -16 }}
+                    className="rounded-[28px] border border-stone-900/10 bg-white/65 p-16 text-center"
+                  >
+                    <Search className="mx-auto h-8 w-8 text-editorial-text/32" />
+                    <p className="mt-5 text-xl font-semibold text-editorial-text">Không tìm thấy sản phẩm</p>
+                    <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-editorial-text/55">
+                      Thử từ khóa khác hoặc chọn danh mục khác.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setSearchQuery("");
+                        setActiveCategory("All");
+                      }}
+                      className="mt-6 rounded-full border border-stone-900/10 bg-white/70 px-5 py-3 text-sm font-semibold text-editorial-text transition hover:border-amber-700/30 hover:bg-amber-700/10"
+                    >
+                      Xóa bộ lọc
+                    </button>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="grid"
+                    initial={{ opacity: 0, y: 16 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -16 }}
+                    className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3"
+                  >
+                    {filteredProducts.map((product, index) => (
+                      <motion.div
+                        key={product.id}
+                        initial={{ opacity: 0, y: 18 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.28, delay: Math.min(index * 0.03, 0.18) }}
+                      >
+                        <ProductCard
+                          product={product}
+                          onViewDetails={handleProductSelect}
+                          onAddToCart={handleAddToCart}
+                          isCompared={comparedProducts.some((p) => p.id === product.id)}
+                          onToggleCompare={handleToggleCompare}
+                          isFavorite={favorites.some((p) => p.id === product.id)}
+                          onToggleFavorite={handleToggleFavorite}
+                        />
+                      </motion.div>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {(aiSearchError || catalogError) && (
+                <div className="mt-5 flex items-start gap-3 rounded-2xl border border-red-700/20 bg-red-700/10 px-4 py-3 text-sm text-red-800">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
+                  <p>{aiSearchError || catalogError}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      </main>
+
+      {/* Full footer */}
+      <footer className="relative z-10 mt-8 border-t border-stone-900/10 bg-white">
+        <div className="mx-auto max-w-[1600px] px-4 py-12 md:px-8">
+          <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-4">
+            {/* Brand column */}
+            <div className="lg:col-span-1">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-[8px] border border-amber-700/20 bg-amber-700/10 text-amber-800">
+                  <Smartphone className="h-5 w-5" />
+                </div>
+                <span className="text-xl font-extrabold text-editorial-text">Lamania</span>
+              </div>
+              <p className="mt-4 text-sm leading-7 text-editorial-text/60">
+                Cửa hàng công nghệ chính hãng — điện thoại, laptop, tai nghe và phụ kiện cao cấp.
+              </p>
+              <div className="mt-5 space-y-2 text-sm text-editorial-text/60">
+                <div className="flex items-center gap-2">
+                  <MapPin className="h-4 w-4 shrink-0 text-amber-700" />
+                  <span>Km10, Đường Nguyễn Trãi, Hà Đông, Hà Nội</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 shrink-0 text-amber-700" />
+                  <span>1800 6242</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="h-4 w-4 shrink-0 text-amber-700" />
+                  <span>support@lamania.vn</span>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(10,18,39,0.75),rgba(8,14,30,0.55))] p-5">
-              <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/48">AI Filter Notes</p>
-              <div className="mt-4 space-y-3 text-sm text-editorial-text/68">
-                <p>Use natural search for intent. Use category tabs for speed. Use compare for tradeoff decisions.</p>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-xs leading-6 text-editorial-text/58">
-                  Best for teams: shortlist two devices, open compare, then use the AI report before adding to cart.
+            {/* Danh mục */}
+            <div>
+              <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-editorial-text/50">Danh mục</p>
+              <ul className="space-y-2.5 text-sm text-editorial-text/65">
+                {["Smartphones", "Laptops", "Tai nghe", "Đồng hồ thông minh", "Máy tính bảng", "Sạc điện thoại", "Sạc dự phòng", "Phụ kiện", "Cáp & Hub"].map((cat) => (
+                  <li key={cat}>
+                    <button
+                      onClick={() => {
+                        setActiveCategory(cat);
+                        document.getElementById("products-section")?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                      className="transition hover:text-amber-800"
+                    >
+                      {cat}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Hỗ trợ */}
+            <div>
+              <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-editorial-text/50">Hỗ trợ</p>
+              <ul className="space-y-2.5 text-sm text-editorial-text/65">
+                {[
+                  "Chính sách bảo hành",
+                  "Hướng dẫn mua hàng",
+                  "Chính sách đổi trả",
+                  "Tra cứu đơn hàng",
+                  "Liên hệ tư vấn",
+                  "Câu hỏi thường gặp",
+                ].map((item) => (
+                  <li key={item}>
+                    <span className="transition hover:text-amber-800 cursor-default">{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Google Map */}
+            <div>
+              <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.14em] text-editorial-text/50">Địa chỉ cửa hàng</p>
+              <div className="overflow-hidden rounded-2xl border border-stone-900/10 shadow-sm">
+                <iframe
+                  title="Lamania Store Location - PTIT"
+                  src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3724.7!2d105.7792!3d20.9811!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3135accdd8a1ad71%3A0xa2f9b16036648187!2zSOG7jWMgdmnhu4duIEPDtG5nIG5naOG7hyBCxrB1IGNow61uaCBWaeG7hW4gdGjDtG5n!5e0!3m2!1svi!2svn!4v1700000000000!5m2!1svi!2svn"
+                  width="100%"
+                  height="180"
+                  style={{ border: 0 }}
+                  allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  className="block"
+                />
+              </div>
+              <div className="mt-3 flex gap-2">
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-700/20 bg-emerald-700/10 px-3 py-1.5 text-xs font-medium text-emerald-800">
+                  <Truck className="h-3 w-3" />
+                  Giao hàng toàn quốc
                 </div>
               </div>
             </div>
           </div>
 
-          <AnimatePresence mode="wait">
-            {catalogLoading ? (
-              <motion.div
-                key="loading"
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -16 }}
-                className="mt-6 rounded-[28px] border border-white/10 bg-white/[0.03] p-16 text-center"
-              >
-                <RefreshCw className="mx-auto h-8 w-8 animate-spin text-cyan-300" />
-                <p className="mt-5 text-xl font-semibold text-editorial-text">Synchronizing premium catalog</p>
-                <p className="mt-2 text-sm text-editorial-text/55">Loading products, categories, and AI-ready metadata.</p>
-              </motion.div>
-            ) : filteredProducts.length === 0 ? (
-              <motion.div
-                key="empty"
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -16 }}
-                className="mt-6 rounded-[28px] border border-white/10 bg-white/[0.03] p-16 text-center"
-              >
-                <Search className="mx-auto h-8 w-8 text-editorial-text/32" />
-                <p className="mt-5 text-xl font-semibold text-editorial-text">No products match this filter set</p>
-                <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-editorial-text/55">
-                  Try a broader term, switch categories, or reset the search to reopen the full catalog view.
-                </p>
-                <button
-                  onClick={() => {
-                    setSearchQuery("");
-                    setActiveCategory("All");
-                  }}
-                  className="mt-6 rounded-full border border-white/10 bg-white/[0.05] px-5 py-3 text-sm font-semibold text-editorial-text transition hover:border-cyan-400/30 hover:bg-cyan-400/10"
-                >
-                  Reset filters
-                </button>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="grid"
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -16 }}
-                className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-3"
-              >
-                {filteredProducts.map((product, index) => (
-                  <motion.div
-                    key={product.id}
-                    initial={{ opacity: 0, y: 18 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.28, delay: Math.min(index * 0.03, 0.18) }}
-                  >
-                    <ProductCard
-                      product={product}
-                      onViewDetails={handleProductSelect}
-                      onAddToCart={handleAddToCart}
-                      isCompared={comparedProducts.some((p) => p.id === product.id)}
-                      onToggleCompare={handleToggleCompare}
-                      isFavorite={favorites.some((p) => p.id === product.id)}
-                      onToggleFavorite={handleToggleFavorite}
-                    />
-                  </motion.div>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {(aiSearchError || catalogError) && (
-            <div className="mt-5 flex items-start gap-3 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
-              <p>{aiSearchError || catalogError}</p>
-            </div>
-          )}
-        </section>
-      </main>
+          <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-stone-900/10 pt-6 text-xs text-editorial-text/45 sm:flex-row">
+            <p>© 2025 Lamania. Tất cả quyền được bảo lưu.</p>
+            <p>Học viện Công nghệ Bưu chính Viễn thông — PTIT, Hà Nội</p>
+          </div>
+        </div>
+      </footer>
 
       {cartOpen && (
         <Cart
@@ -924,6 +1159,14 @@ export default function App() {
         />
       )}
 
+      {profileOpen && authSession && (
+        <CustomerProfile
+          authSession={authSession}
+          onClose={() => setProfileOpen(false)}
+          onSessionRefresh={setAuthSession}
+        />
+      )}
+
       <AIChatBot products={products} selectedProductId={selectedProduct?.id} />
 
       <AuthDialog
@@ -944,13 +1187,6 @@ export default function App() {
         onPhoneVerifyCode={handlePhoneVerifyCode}
         onPhoneReset={handlePhoneReset}
       />
-
-      <footer className="relative z-10 mx-auto mt-8 max-w-7xl px-4 pb-10 md:px-8">
-        <div className="glass-panel glass-border rounded-[28px] px-6 py-5 text-center text-xs uppercase tracking-[0.18em] text-editorial-text/45">
-          <div>TechShop AI Commerce Interface</div>
-          <div className="mt-2 text-[11px] tracking-[0.16em] text-editorial-text/32">Premium storefront layer on top of your existing catalog, auth, cart, and review logic</div>
-        </div>
-      </footer>
     </div>
   );
 }

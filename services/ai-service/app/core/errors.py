@@ -119,7 +119,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             extra={
                 "request_id": getattr(request.state, "request_id", None),
                 "error_code": exc.error_code,
-                "message": exc.message,
+                "error_message": exc.message,
             },
         )
         body = error_response(

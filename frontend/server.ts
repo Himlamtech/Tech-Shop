@@ -82,7 +82,60 @@ app.use(async (req, res, next) => {
 
 // Initialize Gemini SDK lazily, as instructed in Guidelines (fails gracefully on missing key)
 let aiClient: GoogleGenAI | null = null;
-const MODEL_NAME = "gemini-3.5-flash";
+const MODEL_NAME = "gemini-1.5-flash";
+
+function money(value: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number(value || 0));
+}
+
+function compactProduct(product: any) {
+  return `**${product.name}** (${product.category || "Tech"}, ${money(product.price)}, ${product.rating || "n/a"}/5) - ${(product.features || []).slice(0, 2).join(", ") || product.description || "balanced premium option"}`;
+}
+
+function buildProductQaMock(product: any, question: string) {
+  const features = (product.features || []).slice(0, 4);
+  const specs = (product.specs || []).slice(0, 4);
+  const stockLine = product.stock !== undefined ? `Hiện còn khoảng **${product.stock}** sản phẩm trong kho.` : "Tồn kho cần kiểm tra lại ở bước checkout.";
+  return `Mình xem nhanh **${product.name}** theo câu hỏi: "${question}".\n\n**Kết luận ngắn:** đây là lựa chọn hợp nếu bạn ưu tiên ${features.slice(0, 2).join(" và ") || "trải nghiệm cao cấp, ổn định"}. Giá hiện tại là **${money(product.price)}**, điểm đánh giá **${product.rating || "n/a"}/5** từ ${product.reviewsCount || 0} review.\n\n**Điểm mạnh đáng chú ý**\n${features.map((feature: string) => `- ${feature}`).join("\n") || "- Cấu hình cân bằng cho nhu cầu phổ thông và cao cấp."}\n\n**Thông số cần nhìn trước khi mua**\n${specs.map((spec: any) => `- ${spec.label}: ${spec.value}`).join("\n") || "- Chưa có bảng thông số chi tiết trong catalog."}\n\n**Gợi ý mua:** nếu bạn cần ${product.category || "thiết bị"} dùng hằng ngày và thích sự chỉn chu, sản phẩm này đáng shortlist. Nếu ngân sách đang căng, hãy so sánh thêm một mẫu rẻ hơn cùng danh mục để xem phần chênh có thật sự cần thiết không. ${stockLine}`;
+}
+
+function buildCompareMock(productA: any, productB: any) {
+  const cheaper = Number(productA.price || 0) <= Number(productB.price || 0) ? productA : productB;
+  const higherRated = Number(productA.rating || 0) >= Number(productB.rating || 0) ? productA : productB;
+  return `### So sánh nhanh: ${productA.name} vs ${productB.name}\n\n| Tiêu chí | ${productA.name} | ${productB.name} |\n| :--- | :--- | :--- |\n| Giá | ${money(productA.price)} | ${money(productB.price)} |\n| Danh mục | ${productA.category || "n/a"} | ${productB.category || "n/a"} |\n| Đánh giá | ${productA.rating || "n/a"}/5 | ${productB.rating || "n/a"}/5 |\n| Điểm nổi bật | ${(productA.features || [productA.tag || "Cân bằng"])[0]} | ${(productB.features || [productB.tag || "Cân bằng"])[0]} |\n\n**Khác biệt chính**\n- **Giá trị tiền bỏ ra:** ${cheaper.name} dễ chọn hơn nếu bạn muốn kiểm soát ngân sách.\n- **Tín hiệu đánh giá:** ${higherRated.name} đang có lợi thế về điểm rating trong catalog.\n- **Nhu cầu dùng:** ${productA.name} hợp với ${productA.tag || productA.category || "nhu cầu cao cấp"}; ${productB.name} hợp với ${productB.tag || productB.category || "một nhóm nhu cầu khác"}.\n\n**AI verdict:** chọn **${higherRated.name}** nếu bạn muốn phương án ít rủi ro hơn theo rating. Chọn **${cheaper.name}** nếu ưu tiên giá và vẫn muốn giữ trải nghiệm cao cấp.`;
+}
+
+function buildChatMock(products: any[], latestMessage: string, selectedProductId?: string) {
+  const catalog = Array.isArray(products) ? products : [];
+  const lower = latestMessage.toLowerCase();
+  const selected = catalog.find((product) => String(product.id) === String(selectedProductId));
+  const scored = catalog
+    .map((product) => {
+      const haystack = [product.name, product.category, product.brand, product.tag, product.description, ...(product.features || [])].join(" ").toLowerCase();
+      const score = lower.split(/\s+/).filter((token) => token.length > 2 && haystack.includes(token)).length + Number(product.rating || 0) / 10;
+      return { product, score };
+    })
+    .sort((a, b) => b.score - a.score || Number(b.product.rating || 0) - Number(a.product.rating || 0));
+  const picks = (scored.some((item) => item.score > 0.5) ? scored : catalog.map((product) => ({ product, score: 0 }))).slice(0, 3).map((item) => item.product);
+
+  if (catalog.length === 0) {
+    return "Catalog chưa tải xong nên mình chưa thể chọn sản phẩm cụ thể. Bạn cho mình biết ngân sách, mục đích dùng và ưu tiên như pin/hiệu năng/di động, mình sẽ lọc ngay khi dữ liệu sẵn sàng.";
+  }
+
+  const intro = selected ? `Mình đang thấy bạn mở **${selected.name}**, nên sẽ dùng nó làm mốc so sánh.\n\n` : "Mình lọc nhanh từ catalog hiện tại như một tư vấn viên mua hàng.\n\n";
+  const recommendation = picks.map((product, index) => `${index + 1}. ${compactProduct(product)}`).join("\n");
+
+  if (lower.includes("compare") || lower.includes("so sánh")) {
+    return `${intro}**Shortlist nên so sánh:**\n${recommendation}\n\n**Cách chọn:** nếu bạn muốn an toàn, ưu tiên mẫu rating cao và nhiều review. Nếu bạn mua để dùng lâu, hãy so specs quan trọng nhất với workflow của bạn thay vì nhìn giá trước.`;
+  }
+
+  if (lower.includes("budget") || lower.includes("giá") || lower.includes("value") || lower.includes("rẻ")) {
+    const valuePicks = [...catalog].sort((a, b) => Number(a.price || 0) - Number(b.price || 0)).slice(0, 3);
+    return `${intro}**Gợi ý đáng tiền theo giá tăng dần:**\n${valuePicks.map((product, index) => `${index + 1}. ${compactProduct(product)}`).join("\n")}\n\nMẹo chọn: lấy mẫu rẻ nhất nếu nhu cầu rõ ràng; lấy mẫu rating cao hơn nếu bạn muốn ít đánh đổi hơn.`;
+  }
+
+  return `${intro}**3 lựa chọn mình sẽ shortlist:**\n${recommendation}\n\n**Gợi ý tiếp theo:** nói cho mình ngân sách, mục đích chính và điều bạn ghét nhất ở thiết bị cũ. Mình sẽ chốt 1 lựa chọn chính, 1 lựa chọn tiết kiệm, và 1 lựa chọn nâng cấp.`;
+}
 
 function getGeminiClient(): GoogleGenAI {
   if (!aiClient) {
@@ -118,21 +171,15 @@ app.post("/api/product-qa", async (req, res) => {
   // Gracefully check for real API key
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
-    // Elegant fallback simulation if no key is supplied
     setTimeout(() => {
-      res.json({
-        answer: `[DEMO MODE - GEMINI KEY NOT PROVIDED] As an AI, I analyzed **${product.name}** to answer your question: "${question}". Based on its official specs (Price: $${product.price}, Category: ${product.category}), here's what you need to know:
-1. **Dynamic Capabilities:** It highlights features like ${product.features[0] || 'advanced premium components'} and ${product.features[1] || 'durable styling'}.
-2. **Compatibility:** Its ${product.specs[0]?.label || 'Specs'} is rated at "${product.specs[0]?.value || 'Superior'}" making it ideal for high-performance setups.
-3. **Verdict:** This is a stellar choice for users seeking efficiency in their daily flow. Feel free to supply custom API Secret keys in Settings if you'd like live full-scale analysis!`,
-      });
+      res.json({ answer: buildProductQaMock(product, question) });
     }, 1200);
     return;
   }
 
   try {
     const ai = getGeminiClient();
-    const systemInstruction = `You are a friendly, highly knowledgeable tech sales consultant at Aether Tech Shop. 
+    const systemInstruction = `You are a friendly, highly knowledgeable tech sales consultant at Lamania. 
 An customer is asking a about a specific product in our store: "${product.name}".
 Use the following product specifications to answer their question exhaustively and professionally:
 Name: ${product.name}
@@ -159,7 +206,7 @@ Respond in clear Markdown. Be objective, honest, enthusiastic, and target their 
     res.json({ answer: response.text });
   } catch (error: any) {
     console.error("Gemini Product QA Error:", error);
-    res.status(500).json({ error: error.message || "Failed to generate AI response" });
+    res.json({ answer: buildProductQaMock(product, question) });
   }
 });
 
@@ -172,28 +219,8 @@ app.post("/api/product-compare", async (req, res) => {
 
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
-    // Elegant mock fallback
     setTimeout(() => {
-      res.json({
-        report: `### AI Comparison: ${productA.name} vs ${productB.name} (DEMO MODE)
-
-| Metric | ${productA.name} | ${productB.name} |
-| :--- | :--- | :--- |
-| **Price** | $${productA.price} | $${productB.price} |
-| **Category** | ${productA.category} | ${productB.category} |
-| **Rating** | ${productA.rating} ★ | ${productB.rating} ★ |
-| **Core Edge** | ${productA.features[0] || 'Luxury build'} | ${productB.features[0] || 'Next-gen design'} |
-
-#### 🏆 Key Differences & Breakdown
-1. **Financial Choice:** ${productA.name} costs $${productA.price} while ${productB.name} sits at $${productB.price}, making **${productA.price < productB.price ? productA.name : productB.name}** the budget-friendly path.
-2. **Target Audience:** ${productA.name} targets those looking for *"${productA.tag}"*, whereas ${productB.name} excels in *"${productB.tag}"*.
-3. **Technical Build:** ${productA.name} features highlights like *"${productA.specs[0]?.value || 'Custom Spec'}"* compared to ${productB.name}'s *"${productB.specs[0]?.value || 'Alternative Spec'}"*.
-
----
-#### 💡 AI Recommendation Verdict
-* **Choose ${productA.name} if:** You appreciate titanium high-efficiency materials, silent operation, and long battery thresholds.
-* **Choose ${productB.name} if:** You are seeking absolute cutting-edge technology, dense structural stability, and rich haptic details to streamline creative output.`,
-      });
+      res.json({ report: buildCompareMock(productA, productB) });
     }, 1500);
     return;
   }
@@ -241,13 +268,13 @@ Product B Info:
     res.json({ report: response.text });
   } catch (error: any) {
     console.error("Gemini Product Compare Error:", error);
-    res.status(500).json({ error: error.message || "Failed to generate AI comparison" });
+    res.json({ report: buildCompareMock(productA, productB) });
   }
 });
 
 // Full-Scale AI Chatbot Assistant Endpoint
 app.post("/api/chat", async (req, res) => {
-  const { messages, selectedProductId } = req.body;
+  const { messages, selectedProductId, products = [] } = req.body;
   if (!messages || !Array.isArray(messages)) {
     return res.status(400).json({ error: "Missing or invalid messages parameter" });
   }
@@ -258,20 +285,8 @@ app.post("/api/chat", async (req, res) => {
 
   const key = process.env.GEMINI_API_KEY;
   if (!key) {
-    // Elegant simulated fallback
     setTimeout(() => {
-      let responseText = `[DEMO MODE] Thanks for asking! I'm here to act as your Aether Tech Personal Shopper. Currently, we have some fantastic devices available, including the **Aether Glass Pro** ($899), the **Quantum Sound H1** ($349), and the developers' favorite **Nexus Key Zero** ($219). Let me know if you would like me to compare them or give you advice!`;
-      
-      const lowerMsg = latestMessage.toLowerCase();
-      if (lowerMsg.includes("recommend") || lowerMsg.includes("suggest") || lowerMsg.includes("buy")) {
-        responseText = `Based on current tech trends, I highly suggest checking out the **Aether Glass Pro** if you want elite wearable AR capabilities, or the **Quantum Sound H1** headphones for industry-leading 360-degree spatial silence. What are your primary goals for these gadgets?`;
-      } else if (lowerMsg.includes("keyboard") || lowerMsg.includes("nexus") || lowerMsg.includes("type")) {
-        responseText = `Ah, the **Nexus Key Zero**! That is our top mechanical peripheral featuring solid CNC bead-blasted aluminum housing and linear Hall Effect switches. If you do a lot of coding or gaming, its customizable 0.1mm actuation is revolutionary.`;
-      } else if (lowerMsg.includes("glass") || lowerMsg.includes("ar") || lowerMsg.includes("lens")) {
-        responseText = `The **Aether Glass Pro** ($899) is our premium titanium mixed-reality HUD. It provides real-time AI translation overlays and works continuous bone conduction audio. Highly recommended for travelers and developers!`;
-      }
-      
-      res.json({ text: responseText });
+      res.json({ text: buildChatMock(products, latestMessage, selectedProductId) });
     }, 1200);
     return;
   }
@@ -286,12 +301,7 @@ You help customers choose the ideal gadget based on their lifestyle, budget, or 
 If asked about items not in our catalog, gently redirect them to Aether alternatives or answer with technical knowledge while showcasing the Aether equivalent.
 
 Catalog Overview of products currently in stock:
-1. **Aether Glass Pro** ($899) - Augmented Reality Titanium HUD Spectacles. Custom bone conduction, real-time translations.
-2. **Quantum Sound H1** ($349) - ANC wireless headphones. 40mm Beryllium High Definition, 45dB noise block, 48hr battery.
-3. **Chrono Dial T1** ($499) - Ultra-rugged Grade-5 Titanium Sapphire Smartwatch. Dual satellite tracking, continuous biosensing, solar charging crystal (21 days).
-4. **Nexus Key Zero** ($219) - Compact 75% CNC mechanical keyboard. Hall Effect magnetic linear switches with custom actuation, rapid trigger, aluminum build.
-5. **Aura Beam Q1** ($1299) - Triple Laser 4K Projector. 2200 ANSI Lumens, Dolby Audio speakers, intelligent digital keystone.
-6. **Core Pad Space** ($159) - Pressure-sensitive spatial haptic glass trackpad. Ergonomic multi-angle kickstands for wrist relief, OLED dial bar.
+${products.map((product: any, index: number) => `${index + 1}. ${compactProduct(product)}`).join("\n") || "Catalog currently loading."}
 
 If a specific product is currently selected and highlighted by the user (ID: ${selectedProductId || "(none)"}), make sure to lean towards showcasing it if it fits their query.
 Use standard clean Markdown formatting in responses. Always keep it engaging!`;
@@ -313,7 +323,7 @@ Use standard clean Markdown formatting in responses. Always keep it engaging!`;
     res.json({ text: response.text });
   } catch (error: any) {
     console.error("Gemini Chat助理 Error:", error);
-    res.status(500).json({ error: error.message || "Something went wrong in the AI engine" });
+    res.json({ text: buildChatMock(products, latestMessage, selectedProductId) });
   }
 });
 

@@ -20,7 +20,7 @@ interface AdminPanelProps {
 
 function MetricCard({ label, value, hint }: { label: string; value: string | number; hint: string }) {
   return (
-    <article className="rounded-[24px] border border-white/10 bg-white/[0.03] p-5">
+    <article className="rounded-[24px] border border-stone-900/10 bg-white/65 p-5">
       <p className="text-[11px] uppercase tracking-[0.18em] text-editorial-text/45">{label}</p>
       <p className="mt-3 text-3xl font-semibold text-editorial-text">{value}</p>
       <p className="mt-2 text-sm text-editorial-text/58">{hint}</p>
@@ -42,7 +42,7 @@ function formatDateTime(value?: string | null) {
 export default function AdminPanel({ user, dashboard, users, payments, reviews, loading, error, selectedUserId, onRefresh, onSelectUser, onToggleUserStatus, onClearLockout, onChangeUserRole, onDeleteReview }: AdminPanelProps) {
   return (
     <section className="glass-panel glass-border rounded-[32px] p-6 md:p-8">
-      <div className="flex flex-col gap-4 border-b border-white/10 pb-6 md:flex-row md:items-end md:justify-between">
+      <div className="flex flex-col gap-4 border-b border-stone-900/10 pb-6 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="text-[11px] uppercase tracking-[0.2em] text-editorial-text/45">Admin console</p>
           <h2 className="mt-2 text-3xl font-semibold tracking-[-0.04em] text-editorial-text">Operations workspace</h2>
@@ -50,12 +50,12 @@ export default function AdminPanel({ user, dashboard, users, payments, reviews, 
             Signed in as {user.email} with role {user.role}. This surface keeps identity, payments, orders, and review moderation visible in one place.
           </p>
         </div>
-        <button onClick={onRefresh} className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm font-semibold text-editorial-text transition hover:border-cyan-400/25 hover:bg-cyan-400/10">
+        <button onClick={onRefresh} className="rounded-2xl border border-stone-900/10 bg-white/65 px-4 py-3 text-sm font-semibold text-editorial-text transition hover:border-amber-700/25 hover:bg-amber-700/10">
           Refresh admin data
         </button>
       </div>
 
-      {error && <div className="mt-6 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-100">{error}</div>}
+      {error && <div className="mt-6 rounded-2xl border border-red-700/20 bg-red-700/10 px-4 py-3 text-sm text-red-800">{error}</div>}
 
       <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Users" value={dashboard?.identity.total_users ?? "-"} hint={`Active ${dashboard?.identity.active_users ?? 0} / Locked ${dashboard?.identity.locked_users ?? 0}`} />
@@ -72,23 +72,23 @@ export default function AdminPanel({ user, dashboard, users, payments, reviews, 
           </div>
           <div className="space-y-3">
             {users.map((record) => (
-              <article key={record.id} className={`rounded-[24px] border p-4 ${selectedUserId === record.id ? "border-cyan-400/25 bg-cyan-400/10" : "border-white/10 bg-white/[0.03]"}`}>
+              <article key={record.id} className={`rounded-[24px] border p-4 ${selectedUserId === record.id ? "border-amber-700/25 bg-amber-700/10" : "border-stone-900/10 bg-white/65"}`}>
                 <p className="text-sm font-semibold text-editorial-text">{record.email}</p>
                 <p className="mt-1 text-[11px] uppercase tracking-[0.14em] text-editorial-text/45">{record.role}</p>
                 <p className="mt-2 text-xs text-editorial-text/58">Active: {record.is_active ? "yes" : "no"} | Failed attempts: {record.failed_login_attempts}</p>
                 <p className="mt-1 text-[11px] text-editorial-text/45">Locked until: {formatDateTime(record.locked_until)}</p>
                 <p className="mt-1 text-[11px] text-editorial-text/45">Created: {formatDateTime(record.created_at)}</p>
                 <div className="mt-3 flex gap-2">
-                  <button onClick={() => onSelectUser(record)} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-editorial-text/72">Inspect</button>
-                  <select value={record.role} onChange={(event) => onChangeUserRole(record, event.target.value)} className="rounded-xl border border-white/10 bg-slate-950/45 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-editorial-text outline-none">
+                  <button onClick={() => onSelectUser(record)} className="rounded-xl border border-stone-900/10 bg-white/65 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-editorial-text/72">Inspect</button>
+                  <select value={record.role} onChange={(event) => onChangeUserRole(record, event.target.value)} className="rounded-xl border border-stone-900/10 bg-stone-100/80 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-editorial-text outline-none">
                     <option value="admin">admin</option>
                     <option value="staff">staff</option>
                     <option value="customer">customer</option>
                   </select>
                 </div>
                 <div className="mt-3 flex gap-2">
-                  <button onClick={() => onToggleUserStatus(record)} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-editorial-text/72">{record.is_active ? "Disable" : "Enable"}</button>
-                  <button onClick={() => onClearLockout(record)} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-editorial-text/72">Clear lock</button>
+                  <button onClick={() => onToggleUserStatus(record)} className="rounded-xl border border-stone-900/10 bg-white/65 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-editorial-text/72">{record.is_active ? "Disable" : "Enable"}</button>
+                  <button onClick={() => onClearLockout(record)} className="rounded-xl border border-stone-900/10 bg-white/65 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-editorial-text/72">Clear lock</button>
                 </div>
               </article>
             ))}
@@ -99,7 +99,7 @@ export default function AdminPanel({ user, dashboard, users, payments, reviews, 
           <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-editorial-text/55">Payments</h3>
           <div className="space-y-3">
             {payments.map((payment) => (
-              <article key={payment.id} className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
+              <article key={payment.id} className="rounded-[24px] border border-stone-900/10 bg-white/65 p-4">
                 <p className="text-sm font-semibold text-editorial-text">{payment.status.toUpperCase()}</p>
                 <p className="mt-1 text-xs text-editorial-text/58">Order {payment.order_id}</p>
                 <p className="mt-2 text-sm text-editorial-text">{payment.amount}</p>
@@ -114,13 +114,13 @@ export default function AdminPanel({ user, dashboard, users, payments, reviews, 
           <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-editorial-text/55">Reviews</h3>
           <div className="space-y-3">
             {reviews.map((review) => (
-              <article key={review.id} className="rounded-[24px] border border-white/10 bg-white/[0.03] p-4">
+              <article key={review.id} className="rounded-[24px] border border-stone-900/10 bg-white/65 p-4">
                 <p className="text-sm font-semibold text-editorial-text">Rating {review.rating}/5</p>
                 <p className="mt-1 line-clamp-3 text-xs leading-5 text-editorial-text/62">{review.comment}</p>
                 <p className="mt-2 text-[11px] text-editorial-text/45">User {review.user_id.slice(0, 8)} / Product {review.product_id.slice(0, 8)}</p>
                 <div className="mt-3 flex items-center justify-between gap-3">
                   <div className="text-[11px] uppercase tracking-[0.14em] text-editorial-text/42">{review.sentiment_label || review.sentiment_status}</div>
-                  <button onClick={() => onDeleteReview(review)} className="rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-red-100">Delete</button>
+                  <button onClick={() => onDeleteReview(review)} className="rounded-xl border border-red-700/20 bg-red-700/10 px-3 py-2 text-[11px] uppercase tracking-[0.14em] text-red-800">Delete</button>
                 </div>
                 <p className="mt-2 text-[11px] text-editorial-text/45">Created: {formatDateTime(review.created_at)}</p>
               </article>
